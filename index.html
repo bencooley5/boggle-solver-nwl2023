@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Boggle Solver - NWL2023</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <nav class="nav">
+        <a class="nav-brand" href="./">Boggle Home</a>
+        <a class="nav-link" href="./">Boggle</a>
+        <span class="nav-spacer"></span>
+        <a class="nav-link return-link" href="./">» NWL2023 local solver</a>
+      </nav>
+    </header>
+
+    <main class="page">
+      <section class="hero">
+        <div class="tile-rack" aria-hidden="true">
+          <span>B</span>
+          <span>O</span>
+          <span>G</span>
+          <span>G</span>
+          <span>L</span>
+          <span>E</span>
+        </div>
+        <div class="hero-copy">
+          <h1>Boggle Solver</h1>
+          <p>powered by the <a href="https://scrabbleplayers.org/w/NWL2023" target="_blank" rel="noreferrer">NWL2023 US/Canada Scrabble lexicon</a></p>
+        </div>
+      </section>
+
+      <section class="controls" aria-label="Boggle controls">
+        <label class="size-control">
+          <span class="sr-only">Board size</span>
+          <select id="size-select" aria-label="Board size">
+            <option value="4">4</option>
+            <option value="5" selected>5</option>
+            <option value="6">6</option>
+          </select>
+        </label>
+
+        <label class="board-input-wrap">
+          <span class="sr-only">Board letters</span>
+          <input id="board-input" autocomplete="off" spellcheck="false" aria-label="Board letters">
+        </label>
+
+        <button id="solve-button" class="primary-button" type="button" disabled>solve boggle</button>
+        <button id="random-button" class="secondary-button" type="button">random</button>
+      </section>
+
+      <section class="options-row" aria-label="Solver options">
+        <label class="toggle-control">
+          <input id="custom-min-toggle" type="checkbox">
+          <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+          <span>custom min</span>
+        </label>
+
+        <label class="min-length-control">
+          <span>min length</span>
+          <input id="min-length-input" type="number" min="2" max="36" step="1" value="3" disabled>
+        </label>
+      </section>
+
+      <p id="load-status" class="load-status" role="status">Loading NWL2023 dictionary...</p>
+
+      <section class="solver-layout">
+        <div class="board-panel">
+          <p id="solve-status" class="solve-status">Enter letters left-to-right, top-to-bottom. Q is treated as Qu.</p>
+          <div id="board" class="board" aria-label="Boggle board"></div>
+          <p id="definition" class="definition"></p>
+        </div>
+
+        <div class="results-panel">
+          <div class="sort-row">
+            <button id="sort-alpha" class="sort-link" type="button">sort by alpha</button>
+            <span aria-hidden="true">|</span>
+            <button id="sort-length" class="sort-link is-active" type="button">sort by length</button>
+          </div>
+          <div id="results" class="results" aria-live="polite"></div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
