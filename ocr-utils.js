@@ -44,3 +44,19 @@ export function lettersToBoardInput(letters) {
 export function isWeakOcrCandidate(candidate) {
   return !candidate?.letter || candidate.confidence < 68;
 }
+
+export function rotateBoardLetters(items, size, direction = "clockwise") {
+  const rotated = new Array(items.length);
+
+  for (let row = 0; row < size; row += 1) {
+    for (let column = 0; column < size; column += 1) {
+      const targetIndex = row * size + column;
+      const sourceIndex = direction === "counterclockwise"
+        ? column * size + (size - 1 - row)
+        : (size - 1 - column) * size + row;
+      rotated[targetIndex] = items[sourceIndex];
+    }
+  }
+
+  return rotated;
+}

@@ -14,7 +14,8 @@ import {
   chooseBestOcrCandidate,
   isWeakOcrCandidate,
   lettersToBoardInput,
-  normalizeOcrLetter
+  normalizeOcrLetter,
+  rotateBoardLetters
 } from "../ocr-utils.js";
 
 test("parses Q as a Qu tile and accepts explicit Qu input", () => {
@@ -88,6 +89,14 @@ test("normalizes OCR letters and chooses the best rotated candidate", () => {
   assert.equal(best.rotation, 180);
   assert.equal(isWeakOcrCandidate({ letter: "A", confidence: 40 }), true);
   assert.equal(isWeakOcrCandidate({ letter: "A", confidence: 88 }), false);
+});
+
+test("rotates OCR review letters to fix sideways board photos", () => {
+  const photoRows = "AOPACNMSCHIAEQDTETEOLTCNY";
+  const expectedRows = "LTINATEAMOCTESPNEQCAYODHC";
+
+  assert.equal(rotateBoardLetters(Array.from(photoRows), 5, "clockwise").join(""), expectedRows);
+  assert.equal(rotateBoardLetters(Array.from(expectedRows), 5, "counterclockwise").join(""), photoRows);
 });
 
 test("local NWL2023 data includes definitions and solves the sample board", async () => {

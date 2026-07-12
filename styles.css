@@ -687,11 +687,17 @@ a:hover {
 }
 
 .camera-actions,
-.ocr-review-actions {
+.ocr-review-actions,
+.ocr-review-tools {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin-top: 10px;
+}
+
+.ocr-review-tools {
+  grid-template-columns: 1fr 1fr;
+  margin: 0 0 10px;
 }
 
 .ocr-review-dialog {
@@ -1090,7 +1096,8 @@ a:hover {
   }
 
   .camera-actions,
-  .ocr-review-actions {
+  .ocr-review-actions,
+  .ocr-review-tools {
     gap: 6px;
   }
 
@@ -1098,7 +1105,8 @@ a:hover {
   .camera-actions .secondary-button,
   .camera-actions .camera-close-button,
   .ocr-review-actions .primary-button,
-  .ocr-review-actions .camera-close-button {
+  .ocr-review-actions .camera-close-button,
+  .ocr-review-tools .secondary-button {
     min-height: 38px;
     border-width: 2px;
     font-size: 12px;
