@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Boggle Solver - NWL2023</title>
-    <link rel="stylesheet" href="./styles.css?v=mobile2">
+    <link rel="stylesheet" href="./styles.css?v=ocr1">
   </head>
   <body>
     <header class="topbar">
@@ -49,6 +49,8 @@
 
         <button id="solve-button" class="primary-button" type="button" disabled>solve boggle</button>
         <button id="random-button" class="secondary-button" type="button">random</button>
+        <button id="scan-button" class="camera-button" type="button">scan board</button>
+        <input id="camera-input" class="sr-only" type="file" accept="image/*" capture="environment">
       </section>
 
       <section class="options-row" aria-label="Solver options">
@@ -65,6 +67,7 @@
       </section>
 
       <p id="load-status" class="load-status" role="status">Loading NWL2023 dictionary...</p>
+      <p id="ocr-status" class="ocr-status" role="status"></p>
 
       <section class="solver-layout">
         <div class="board-panel">
@@ -84,6 +87,21 @@
       </section>
     </main>
 
-    <script type="module" src="./app.js"></script>
+    <div id="camera-panel" class="camera-panel" hidden>
+      <div class="camera-dialog" role="dialog" aria-modal="true" aria-labelledby="camera-title">
+        <h2 id="camera-title">Scan Boggle Board</h2>
+        <div class="camera-view">
+          <video id="camera-video" autoplay muted playsinline></video>
+          <div class="camera-guide" aria-hidden="true"></div>
+        </div>
+        <div class="camera-actions">
+          <button id="capture-button" class="primary-button" type="button">capture</button>
+          <button id="upload-button" class="secondary-button" type="button">photo</button>
+          <button id="close-camera-button" class="camera-close-button" type="button">close</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js?v=ocr1"></script>
   </body>
 </html>

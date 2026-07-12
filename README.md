@@ -29,3 +29,9 @@ http://localhost:5173
 ```sh
 npm test
 ```
+
+## Camera OCR
+
+The `scan board` button opens the device camera on HTTPS-capable browsers, captures the centered square guide area, splits it into the selected board size, and OCRs each tile at 0, 90, 180, and 270 degrees. OCR runs client-side in the browser through Tesseract.js loaded from jsDelivr.
+
+Camera OCR is best-effort. Good lighting, a square-on board photo, and reviewing the filled letters before solving will matter.

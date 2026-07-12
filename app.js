@@ -11,8 +11,15 @@ import {
   solveBoard,
   tilesToInput
 } from "./solver-core.js";
+import {
+  OCR_ROTATIONS,
+  chooseBestOcrCandidate,
+  lettersToBoardInput
+} from "./ocr-utils.js";
 
 const DATA_URL = "./data/nwl2023.txt";
+const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+const OCR_CANVAS_SIZE = 180;
 
 const elements = {
   sizeSelect: document.querySelector("#size-select"),
@@ -21,13 +28,21 @@ const elements = {
   minLengthInput: document.querySelector("#min-length-input"),
   solveButton: document.querySelector("#solve-button"),
   randomButton: document.querySelector("#random-button"),
+  scanButton: document.querySelector("#scan-button"),
+  cameraInput: document.querySelector("#camera-input"),
   loadStatus: document.querySelector("#load-status"),
+  ocrStatus: document.querySelector("#ocr-status"),
   solveStatus: document.querySelector("#solve-status"),
   board: document.querySelector("#board"),
   definition: document.querySelector("#definition"),
   results: document.querySelector("#results"),
   sortAlpha: document.querySelector("#sort-alpha"),
-  sortLength: document.querySelector("#sort-length")
+  sortLength: document.querySelector("#sort-length"),
+  cameraPanel: document.querySelector("#camera-panel"),
+  cameraVideo: document.querySelector("#camera-video"),
+  captureButton: document.querySelector("#capture-button"),
+  uploadButton: document.querySelector("#upload-button"),
+  closeCameraButton: document.querySelector("#close-camera-button")
 };
 
 let dictionary = null;
@@ -35,6 +50,9 @@ let currentResults = [];
 let selectedWord = null;
 let selectedStartIndex = null;
 let sortMode = "length";
+let cameraStream = null;
+let ocrWorkerPromise = null;
+let isOcrRunning = false;
 
 boot();
 
@@ -101,6 +119,23 @@ function bindEvents() {
     clearResults();
     renderBoard();
     if (dictionary) solveCurrentBoard();
+  });
+
+  elements.scanButton.addEventListener("click", openCameraScanner);
+  elements.cameraInput.addEventListener("change", handleCameraInput);
+  elements.captureButton.addEventListener("click", captureCameraBoard);
+  elements.uploadButton.addEventListener("click", () => elements.cameraInput.click());
+  elements.closeCameraButton.addEventListener("click", closeCameraScanner);
+  elements.cameraPanel.addEventListener("click", (event) => {
+    if (event.target === elements.cameraPanel) {
+      closeCameraScanner();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !elements.cameraPanel.hidden) {
+      closeCameraScanner();
+    }
   });
 
   elements.sortAlpha.addEventListener("click", () => {
@@ -315,4 +350,232 @@ function clearResults(clearStatus = true) {
 function updateSortButtons() {
   elements.sortAlpha.classList.toggle("is-active", sortMode === "alpha");
   elements.sortLength.classList.toggle("is-active", sortMode === "length");
+}
+
+async function openCameraScanner() {
+  if (isOcrRunning) return;
+  setOcrStatus("");
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setOcrStatus("Camera stream unavailable; choose a photo.");
+    elements.cameraInput.click();
+    return;
+  }
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 1280 }
+      }
+    });
+
+    elements.cameraVideo.srcObject = cameraStream;
+    elements.cameraPanel.hidden = false;
+    await elements.cameraVideo.play();
+  } catch (error) {
+    closeCameraScanner();
+    setOcrStatus("Camera blocked; choose a photo.");
+    elements.cameraInput.click();
+  }
+}
+
+function closeCameraScanner() {
+  if (cameraStream) {
+    for (const track of cameraStream.getTracks()) {
+      track.stop();
+    }
+  }
+
+  cameraStream = null;
+  elements.cameraVideo.srcObject = null;
+  elements.cameraPanel.hidden = true;
+}
+
+async function captureCameraBoard() {
+  if (!elements.cameraVideo.videoWidth || !elements.cameraVideo.videoHeight) {
+    setOcrStatus("Camera is still warming up.");
+    return;
+  }
+
+  const canvas = cropCenterSquare(elements.cameraVideo, 0.82);
+  closeCameraScanner();
+  await recognizeBoardFromCanvas(canvas);
+}
+
+async function handleCameraInput(event) {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+
+  closeCameraScanner();
+
+  try {
+    const image = await loadImageFromFile(file);
+    await recognizeBoardFromCanvas(cropCenterSquare(image, 0.9));
+  } catch (error) {
+    setOcrStatus(`Could not read image: ${error.message}`);
+  }
+}
+
+async function recognizeBoardFromCanvas(boardCanvas) {
+  if (isOcrRunning) return;
+
+  isOcrRunning = true;
+  elements.scanButton.disabled = true;
+
+  try {
+    const size = getSize();
+    const worker = await getOcrWorker();
+    const letters = [];
+    const expected = size * size;
+
+    for (let index = 0; index < expected; index += 1) {
+      setOcrStatus(`OCR tile ${index + 1}/${expected}...`);
+      const cellCanvas = extractBoardCell(boardCanvas, size, index);
+      const candidates = [];
+
+      for (const rotation of OCR_ROTATIONS) {
+        const tileCanvas = prepareTileForOcr(cellCanvas, rotation);
+        const result = await worker.recognize(tileCanvas);
+        candidates.push({
+          rotation,
+          text: result.data?.text || "",
+          confidence: result.data?.confidence || 0
+        });
+      }
+
+      letters.push(chooseBestOcrCandidate(candidates).letter || "E");
+    }
+
+    elements.boardInput.value = lettersToBoardInput(letters);
+    clearResults();
+    renderBoard();
+    setOcrStatus(`OCR filled ${letters.length} tiles. Review or edit the letters if needed.`);
+    if (dictionary) solveCurrentBoard();
+  } catch (error) {
+    setOcrStatus(`OCR failed: ${error.message}`);
+  } finally {
+    isOcrRunning = false;
+    elements.scanButton.disabled = false;
+  }
+}
+
+async function getOcrWorker() {
+  if (!ocrWorkerPromise) {
+    ocrWorkerPromise = (async () => {
+      setOcrStatus("Loading OCR engine...");
+      await loadTesseract();
+      const worker = await window.Tesseract.createWorker("eng");
+      await worker.setParameters({
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        tessedit_pageseg_mode: window.Tesseract.PSM?.SINGLE_CHAR || "10"
+      });
+      return worker;
+    })();
+  }
+
+  return ocrWorkerPromise;
+}
+
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = TESSERACT_SCRIPT_URL;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Could not load Tesseract.js"));
+    document.head.append(script);
+  });
+}
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(image.src);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(image.src);
+      reject(new Error("image load failed"));
+    };
+    image.src = URL.createObjectURL(file);
+  });
+}
+
+function cropCenterSquare(source, scale = 1) {
+  const sourceWidth = source.videoWidth || source.naturalWidth || source.width;
+  const sourceHeight = source.videoHeight || source.naturalHeight || source.height;
+  const cropSize = Math.min(sourceWidth, sourceHeight) * scale;
+  const sx = (sourceWidth - cropSize) / 2;
+  const sy = (sourceHeight - cropSize) / 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 1024;
+  const context = canvas.getContext("2d");
+  context.drawImage(source, sx, sy, cropSize, cropSize, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+function extractBoardCell(boardCanvas, size, index) {
+  const cellSize = boardCanvas.width / size;
+  const column = index % size;
+  const row = Math.floor(index / size);
+  const padding = cellSize * 0.12;
+  const cropSize = cellSize - padding * 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = OCR_CANVAS_SIZE;
+  canvas.height = OCR_CANVAS_SIZE;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(
+    boardCanvas,
+    column * cellSize + padding,
+    row * cellSize + padding,
+    cropSize,
+    cropSize,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+  return canvas;
+}
+
+function prepareTileForOcr(cellCanvas, rotation) {
+  const canvas = document.createElement("canvas");
+  canvas.width = OCR_CANVAS_SIZE;
+  canvas.height = OCR_CANVAS_SIZE;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.translate(canvas.width / 2, canvas.height / 2);
+  context.rotate((rotation * Math.PI) / 180);
+  context.drawImage(cellCanvas, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  for (let index = 0; index < imageData.data.length; index += 4) {
+    const red = imageData.data[index];
+    const green = imageData.data[index + 1];
+    const blue = imageData.data[index + 2];
+    const gray = red * 0.299 + green * 0.587 + blue * 0.114;
+    const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.8 + 128));
+    imageData.data[index] = contrasted;
+    imageData.data[index + 1] = contrasted;
+    imageData.data[index + 2] = contrasted;
+  }
+  context.putImageData(imageData, 0, 0);
+
+  return canvas;
+}
+
+function setOcrStatus(message) {
+  elements.ocrStatus.textContent = message;
+  elements.ocrStatus.hidden = !message;
 }

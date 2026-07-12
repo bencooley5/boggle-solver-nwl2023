@@ -10,6 +10,11 @@ import {
   scoreWord,
   solveBoard
 } from "../solver-core.js";
+import {
+  chooseBestOcrCandidate,
+  lettersToBoardInput,
+  normalizeOcrLetter
+} from "../ocr-utils.js";
 
 test("parses Q as a Qu tile and accepts explicit Qu input", () => {
   assert.deepEqual(parseBoardInput("QABCDEFGHIJKLMNO", 4).tiles[0], "QU");
@@ -64,6 +69,22 @@ test("filters solved words with a custom minimum length", () => {
 
   assert.deepEqual(twoPlus, ["AT", "ATE", "EAT", "TEA"]);
   assert.deepEqual(threePlus, ["ATE", "EAT", "TEA"]);
+});
+
+test("normalizes OCR letters and chooses the best rotated candidate", () => {
+  assert.equal(normalizeOcrLetter("qu"), "Q");
+  assert.equal(normalizeOcrLetter("0"), "O");
+  assert.equal(normalizeOcrLetter("$"), "S");
+  assert.equal(lettersToBoardInput(["A", "QU", "0", ""]), "AQOE");
+
+  const best = chooseBestOcrCandidate([
+    { text: "", confidence: 92, rotation: 0 },
+    { text: "1", confidence: 45, rotation: 90 },
+    { text: "I", confidence: 88, rotation: 180 }
+  ]);
+
+  assert.equal(best.letter, "I");
+  assert.equal(best.rotation, 180);
 });
 
 test("local NWL2023 data includes definitions and solves the sample board", async () => {
