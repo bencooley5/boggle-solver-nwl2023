@@ -12,6 +12,7 @@ import {
 } from "../solver-core.js";
 import {
   chooseBestOcrCandidate,
+  isWeakOcrCandidate,
   lettersToBoardInput,
   normalizeOcrLetter
 } from "../ocr-utils.js";
@@ -85,6 +86,8 @@ test("normalizes OCR letters and chooses the best rotated candidate", () => {
 
   assert.equal(best.letter, "I");
   assert.equal(best.rotation, 180);
+  assert.equal(isWeakOcrCandidate({ letter: "A", confidence: 40 }), true);
+  assert.equal(isWeakOcrCandidate({ letter: "A", confidence: 88 }), false);
 });
 
 test("local NWL2023 data includes definitions and solves the sample board", async () => {

@@ -14,12 +14,23 @@ import {
 import {
   OCR_ROTATIONS,
   chooseBestOcrCandidate,
+  isWeakOcrCandidate,
   lettersToBoardInput
 } from "./ocr-utils.js";
 
 const DATA_URL = "./data/nwl2023.txt";
 const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
 const OCR_CANVAS_SIZE = 180;
+const OCR_MASK_SIZE = 64;
+const OCR_TEMPLATE_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").concat("QU");
+const OCR_TEMPLATE_FONTS = [
+  "Arial",
+  "Verdana",
+  "Georgia",
+  "\"Times New Roman\"",
+  "\"Trebuchet MS\"",
+  "Impact"
+];
 
 const elements = {
   sizeSelect: document.querySelector("#size-select"),
@@ -42,7 +53,11 @@ const elements = {
   cameraVideo: document.querySelector("#camera-video"),
   captureButton: document.querySelector("#capture-button"),
   uploadButton: document.querySelector("#upload-button"),
-  closeCameraButton: document.querySelector("#close-camera-button")
+  closeCameraButton: document.querySelector("#close-camera-button"),
+  ocrReviewPanel: document.querySelector("#ocr-review-panel"),
+  ocrReviewGrid: document.querySelector("#ocr-review-grid"),
+  applyOcrButton: document.querySelector("#apply-ocr-button"),
+  closeOcrReviewButton: document.querySelector("#close-ocr-review-button")
 };
 
 let dictionary = null;
@@ -53,6 +68,8 @@ let sortMode = "length";
 let cameraStream = null;
 let ocrWorkerPromise = null;
 let isOcrRunning = false;
+let lastOcrResults = [];
+let templateMasks = null;
 
 boot();
 
@@ -126,15 +143,27 @@ function bindEvents() {
   elements.captureButton.addEventListener("click", captureCameraBoard);
   elements.uploadButton.addEventListener("click", () => elements.cameraInput.click());
   elements.closeCameraButton.addEventListener("click", closeCameraScanner);
+  elements.applyOcrButton.addEventListener("click", applyOcrReview);
+  elements.closeOcrReviewButton.addEventListener("click", () => {
+    elements.ocrReviewPanel.hidden = true;
+  });
   elements.cameraPanel.addEventListener("click", (event) => {
     if (event.target === elements.cameraPanel) {
       closeCameraScanner();
+    }
+  });
+  elements.ocrReviewPanel.addEventListener("click", (event) => {
+    if (event.target === elements.ocrReviewPanel) {
+      elements.ocrReviewPanel.hidden = true;
     }
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !elements.cameraPanel.hidden) {
       closeCameraScanner();
+    }
+    if (event.key === "Escape" && !elements.ocrReviewPanel.hidden) {
+      elements.ocrReviewPanel.hidden = true;
     }
   });
 
@@ -428,32 +457,48 @@ async function recognizeBoardFromCanvas(boardCanvas) {
 
   try {
     const size = getSize();
-    const worker = await getOcrWorker();
-    const letters = [];
+    const ocrResults = [];
     const expected = size * size;
 
     for (let index = 0; index < expected; index += 1) {
-      setOcrStatus(`OCR tile ${index + 1}/${expected}...`);
       const cellCanvas = extractBoardCell(boardCanvas, size, index);
-      const candidates = [];
+      let bestCandidate = guessTileWithTemplates(cellCanvas);
 
-      for (const rotation of OCR_ROTATIONS) {
-        const tileCanvas = prepareTileForOcr(cellCanvas, rotation);
-        const result = await worker.recognize(tileCanvas);
-        candidates.push({
-          rotation,
-          text: result.data?.text || "",
-          confidence: result.data?.confidence || 0
-        });
+      if (isWeakOcrCandidate(bestCandidate)) {
+        setOcrStatus(`OCR tile ${index + 1}/${expected}...`);
+        const worker = await getOcrWorker();
+        const candidates = [bestCandidate];
+
+        for (const rotation of OCR_ROTATIONS) {
+          const tileCanvas = prepareTileForOcr(cellCanvas, rotation);
+          const result = await worker.recognize(tileCanvas);
+          candidates.push({
+            rotation,
+            text: result.data?.text || "",
+            confidence: result.data?.confidence || 0,
+            source: "tesseract"
+          });
+        }
+
+        bestCandidate = chooseBestOcrCandidate(candidates);
+      } else {
+        setOcrStatus(`Matched tile ${index + 1}/${expected}...`);
       }
 
-      letters.push(chooseBestOcrCandidate(candidates).letter || "E");
+      ocrResults.push({
+        ...bestCandidate,
+        index,
+        letter: bestCandidate.letter || "E"
+      });
     }
 
-    elements.boardInput.value = lettersToBoardInput(letters);
+    lastOcrResults = ocrResults;
+    elements.boardInput.value = lettersToBoardInput(ocrResults.map((result) => result.letter));
     clearResults();
     renderBoard();
-    setOcrStatus(`OCR filled ${letters.length} tiles. Review or edit the letters if needed.`);
+    renderOcrReview(ocrResults);
+    const weakCount = ocrResults.filter(isWeakOcrCandidate).length;
+    setOcrStatus(`OCR filled ${ocrResults.length} tiles. Review the scan${weakCount ? `; ${weakCount} low-confidence guesses are marked.` : "."}`);
     if (dictionary) solveCurrentBoard();
   } catch (error) {
     setOcrStatus(`OCR failed: ${error.message}`);
@@ -526,7 +571,7 @@ function extractBoardCell(boardCanvas, size, index) {
   const cellSize = boardCanvas.width / size;
   const column = index % size;
   const row = Math.floor(index / size);
-  const padding = cellSize * 0.12;
+  const padding = cellSize * 0.18;
   const cropSize = cellSize - padding * 2;
   const canvas = document.createElement("canvas");
   canvas.width = OCR_CANVAS_SIZE;
@@ -559,20 +604,310 @@ function prepareTileForOcr(cellCanvas, rotation) {
   context.rotate((rotation * Math.PI) / 180);
   context.drawImage(cellCanvas, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
 
+  enhanceTileCanvas(canvas);
+  return canvas;
+}
+
+function enhanceTileCanvas(canvas) {
+  const context = canvas.getContext("2d");
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const grays = [];
+
   for (let index = 0; index < imageData.data.length; index += 4) {
     const red = imageData.data[index];
     const green = imageData.data[index + 1];
     const blue = imageData.data[index + 2];
     const gray = red * 0.299 + green * 0.587 + blue * 0.114;
-    const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.8 + 128));
-    imageData.data[index] = contrasted;
-    imageData.data[index + 1] = contrasted;
-    imageData.data[index + 2] = contrasted;
+    grays.push(gray);
+  }
+
+  const threshold = getOtsuThreshold(grays);
+  for (let index = 0; index < imageData.data.length; index += 4) {
+    const red = imageData.data[index];
+    const green = imageData.data[index + 1];
+    const blue = imageData.data[index + 2];
+    const gray = red * 0.299 + green * 0.587 + blue * 0.114;
+    const value = gray < threshold ? 0 : 255;
+    imageData.data[index] = value;
+    imageData.data[index + 1] = value;
+    imageData.data[index + 2] = value;
   }
   context.putImageData(imageData, 0, 0);
+}
 
-  return canvas;
+function guessTileWithTemplates(cellCanvas) {
+  let best = null;
+  let secondScore = 0;
+
+  for (const rotation of OCR_ROTATIONS) {
+    const tileCanvas = prepareTileForOcr(cellCanvas, rotation);
+    const glyphMask = createGlyphMask(tileCanvas);
+    if (!glyphMask.pixels) continue;
+
+    for (const template of getTemplateMasks()) {
+      const score = compareGlyphMasks(glyphMask.mask, template.mask);
+      if (!best || score > best.score) {
+        secondScore = best?.score || 0;
+        best = {
+          text: template.label,
+          letter: template.label === "QU" ? "Q" : template.label,
+          rotation,
+          score,
+          source: "template"
+        };
+      } else if (score > secondScore) {
+        secondScore = score;
+      }
+    }
+  }
+
+  if (!best) {
+    return { text: "", letter: "", confidence: 0, rotation: 0, score: 0, source: "template" };
+  }
+
+  const margin = Math.max(0, best.score - secondScore);
+  const confidence = Math.max(0, Math.min(99, Math.round(best.score * 120 + margin * 160)));
+  return { ...best, confidence, margin };
+}
+
+function getTemplateMasks() {
+  if (templateMasks) return templateMasks;
+
+  templateMasks = [];
+  for (const label of OCR_TEMPLATE_LABELS) {
+    for (const fontFamily of OCR_TEMPLATE_FONTS) {
+      for (const weight of [700, 900]) {
+        const canvas = document.createElement("canvas");
+        canvas.width = OCR_CANVAS_SIZE;
+        canvas.height = OCR_CANVAS_SIZE;
+        const context = canvas.getContext("2d");
+        context.fillStyle = "#fff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = "#000";
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.font = `${weight} ${label === "QU" ? 70 : 104}px ${fontFamily}`;
+        context.fillText(label === "QU" ? "Qu" : label, canvas.width / 2, canvas.height / 2 + 4);
+
+        const glyphMask = createGlyphMask(canvas);
+        if (glyphMask.pixels) {
+          templateMasks.push({ label, mask: glyphMask.mask });
+        }
+      }
+    }
+  }
+
+  return templateMasks;
+}
+
+function createGlyphMask(canvas) {
+  const context = canvas.getContext("2d");
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const grays = [];
+  const sourceMask = new Uint8Array(canvas.width * canvas.height);
+
+  for (let index = 0; index < imageData.data.length; index += 4) {
+    const red = imageData.data[index];
+    const green = imageData.data[index + 1];
+    const blue = imageData.data[index + 2];
+    grays.push(red * 0.299 + green * 0.587 + blue * 0.114);
+  }
+
+  const threshold = getOtsuThreshold(grays);
+  let minX = canvas.width;
+  let minY = canvas.height;
+  let maxX = -1;
+  let maxY = -1;
+  let pixels = 0;
+  const edge = Math.round(canvas.width * 0.05);
+
+  for (let y = edge; y < canvas.height - edge; y += 1) {
+    for (let x = edge; x < canvas.width - edge; x += 1) {
+      const index = y * canvas.width + x;
+      if (grays[index] >= threshold) continue;
+      sourceMask[index] = 1;
+      pixels += 1;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+
+  if (!pixels || maxX < minX || maxY < minY) {
+    return { mask: new Uint8Array(OCR_MASK_SIZE * OCR_MASK_SIZE), pixels: 0 };
+  }
+
+  const glyphWidth = maxX - minX + 1;
+  const glyphHeight = maxY - minY + 1;
+  const scale = Math.min((OCR_MASK_SIZE - 12) / glyphWidth, (OCR_MASK_SIZE - 12) / glyphHeight);
+  const drawWidth = glyphWidth * scale;
+  const drawHeight = glyphHeight * scale;
+  const offsetX = (OCR_MASK_SIZE - drawWidth) / 2;
+  const offsetY = (OCR_MASK_SIZE - drawHeight) / 2;
+  const normalizedMask = new Uint8Array(OCR_MASK_SIZE * OCR_MASK_SIZE);
+
+  for (let y = 0; y < OCR_MASK_SIZE; y += 1) {
+    for (let x = 0; x < OCR_MASK_SIZE; x += 1) {
+      const sourceX = Math.floor(minX + (x - offsetX) / scale);
+      const sourceY = Math.floor(minY + (y - offsetY) / scale);
+      if (
+        sourceX >= minX &&
+        sourceX <= maxX &&
+        sourceY >= minY &&
+        sourceY <= maxY &&
+        sourceMask[sourceY * canvas.width + sourceX]
+      ) {
+        normalizedMask[y * OCR_MASK_SIZE + x] = 1;
+      }
+    }
+  }
+
+  const mask = dilateMask(normalizedMask, OCR_MASK_SIZE);
+  return { mask, pixels: countMaskPixels(mask) };
+}
+
+function compareGlyphMasks(candidateMask, templateMask) {
+  let intersection = 0;
+  let union = 0;
+  let templatePixels = 0;
+
+  for (let index = 0; index < candidateMask.length; index += 1) {
+    const candidate = candidateMask[index];
+    const template = templateMask[index];
+    if (template) templatePixels += 1;
+    if (candidate || template) union += 1;
+    if (candidate && template) intersection += 1;
+  }
+
+  if (!union || !templatePixels) return 0;
+  const jaccard = intersection / union;
+  const coverage = intersection / templatePixels;
+  return jaccard * 0.7 + coverage * 0.3;
+}
+
+function dilateMask(mask, size) {
+  const output = new Uint8Array(mask.length);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const index = y * size + x;
+      if (!mask[index]) continue;
+
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
+            output[ny * size + nx] = 1;
+          }
+        }
+      }
+    }
+  }
+  return output;
+}
+
+function countMaskPixels(mask) {
+  return mask.reduce((sum, value) => sum + value, 0);
+}
+
+function getOtsuThreshold(values) {
+  const histogram = new Array(256).fill(0);
+  for (const value of values) {
+    histogram[Math.max(0, Math.min(255, Math.round(value)))] += 1;
+  }
+
+  const total = values.length;
+  let sum = 0;
+  for (let index = 0; index < 256; index += 1) {
+    sum += index * histogram[index];
+  }
+
+  let sumBackground = 0;
+  let weightBackground = 0;
+  let maxVariance = -1;
+  let threshold = 128;
+
+  for (let index = 0; index < 256; index += 1) {
+    weightBackground += histogram[index];
+    if (!weightBackground) continue;
+
+    const weightForeground = total - weightBackground;
+    if (!weightForeground) break;
+
+    sumBackground += index * histogram[index];
+    const meanBackground = sumBackground / weightBackground;
+    const meanForeground = (sum - sumBackground) / weightForeground;
+    const variance = weightBackground * weightForeground * (meanBackground - meanForeground) ** 2;
+
+    if (variance > maxVariance) {
+      maxVariance = variance;
+      threshold = index;
+    }
+  }
+
+  return Math.max(45, Math.min(210, threshold));
+}
+
+function renderOcrReview(results) {
+  elements.ocrReviewGrid.style.setProperty("--board-size", getSize());
+  elements.ocrReviewGrid.replaceChildren();
+
+  const fragment = document.createDocumentFragment();
+  for (const result of results) {
+    const label = document.createElement("label");
+    label.className = "ocr-cell";
+    if (isWeakOcrCandidate(result)) {
+      label.classList.add("is-weak");
+    }
+
+    const number = document.createElement("span");
+    number.textContent = result.index + 1;
+
+    const input = document.createElement("input");
+    input.value = result.letter === "Q" ? "Qu" : result.letter;
+    input.maxLength = 2;
+    input.inputMode = "text";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.dataset.index = String(result.index);
+    input.setAttribute("aria-label", `Scanned tile ${result.index + 1}`);
+    input.addEventListener("input", () => {
+      input.value = cleanReviewInput(input.value);
+    });
+
+    label.append(number, input);
+    fragment.append(label);
+  }
+
+  elements.ocrReviewGrid.append(fragment);
+  elements.ocrReviewPanel.hidden = false;
+}
+
+function applyOcrReview() {
+  const values = Array.from(elements.ocrReviewGrid.querySelectorAll("input"))
+    .sort((left, right) => Number(left.dataset.index) - Number(right.dataset.index))
+    .map((input) => cleanReviewInput(input.value));
+  const letters = values.map((value) => (value.toUpperCase() === "QU" ? "Q" : value));
+
+  lastOcrResults = letters.map((letter, index) => ({
+    ...(lastOcrResults[index] || {}),
+    index,
+    letter
+  }));
+
+  elements.boardInput.value = lettersToBoardInput(values);
+  elements.ocrReviewPanel.hidden = true;
+  clearResults();
+  renderBoard();
+  if (dictionary) solveCurrentBoard();
+  setOcrStatus("Applied scan edits.");
+}
+
+function cleanReviewInput(value) {
+  const cleaned = String(value || "").toUpperCase().replace(/[^A-Z]/g, "");
+  if (cleaned.startsWith("QU")) return "Qu";
+  return cleaned.slice(0, 1);
 }
 
 function setOcrStatus(message) {

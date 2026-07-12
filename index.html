@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Boggle Solver - NWL2023</title>
-    <link rel="stylesheet" href="./styles.css?v=ocr1">
+    <link rel="stylesheet" href="./styles.css?v=ocr2">
   </head>
   <body>
     <header class="topbar">
@@ -102,6 +102,17 @@
       </div>
     </div>
 
-    <script type="module" src="./app.js?v=ocr1"></script>
+    <div id="ocr-review-panel" class="ocr-review-panel" hidden>
+      <div class="ocr-review-dialog" role="dialog" aria-modal="true" aria-labelledby="ocr-review-title">
+        <h2 id="ocr-review-title">Review Scan</h2>
+        <div id="ocr-review-grid" class="ocr-review-grid"></div>
+        <div class="ocr-review-actions">
+          <button id="apply-ocr-button" class="primary-button" type="button">apply edits</button>
+          <button id="close-ocr-review-button" class="camera-close-button" type="button">close</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js?v=ocr2"></script>
   </body>
 </html>
