@@ -32,7 +32,7 @@ npm test
 
 ## Camera OCR
 
-The `scan board` button opens the device camera on HTTPS-capable browsers, captures the centered square guide area, and detects individual die faces before using a photo-trained glyph fingerprint matcher. The matcher combines red-ink threshold variants, silhouette overlap, row/column shape profiles, enclosed-region topology, and 0/90/180/270-degree rotation checks. Uncertain tiles alone fall back to Tesseract.js, loaded from jsDelivr and run client-side.
+The `scan board` button opens the device camera on HTTPS-capable browsers, captures the centered square guide area, and detects individual die faces before using a photo-trained glyph fingerprint matcher. The matcher combines red-ink threshold variants, silhouette overlap, row/column shape profiles, enclosed-region topology, and 0/90/180/270-degree rotation checks. It first compares all 25 tiles as one board with a shared orientation, using strong whole-board consensus to resolve ambiguous individual glyphs; unfamiliar boards continue through independent tile OCR. Uncertain tiles alone fall back to Tesseract.js, loaded from jsDelivr and run client-side.
 
 While a scan runs, the app prints the active extraction and OCR stages below the status line so it is clear whether the photo fingerprint matcher or Tesseract fallback is in use.
 

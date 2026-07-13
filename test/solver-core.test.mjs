@@ -131,4 +131,6 @@ test("OCR build badge is in the top hero and the old version box is removed", as
   assert.match(html, /class="build-line"[^>]*>[^<]*powered by the[\s\S]*id="ocr-build"/);
   assert.doesNotMatch(html, /class="build-row"/);
   assert.match(app, /finally \{\s*clearOcrLog\(\);/);
+  assert.match(app, /guessBoardWithPhotoTemplates\(dieCells, size\)/);
+  assert.match(app, /source: "board-photo-consensus"/);
 });

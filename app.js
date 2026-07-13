@@ -19,9 +19,9 @@ import {
   normalizeOcrLetter,
   rotateBoardLetters
 } from "./ocr-utils.js";
-import { PHOTO_DICE_TEMPLATE_MASKS } from "./ocr-photo-templates.js?v=ocr22-ui2";
+import { PHOTO_DICE_TEMPLATE_MASKS } from "./ocr-photo-templates.js?v=ocr22-board1";
 
-const OCR_BUILD = "2026.07.13.3 / ocr22";
+const OCR_BUILD = "2026.07.13.4 / ocr22";
 const DATA_URL = "./data/nwl2023.txt";
 const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
 const HEIC_CONVERTER_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js";
@@ -506,11 +506,21 @@ async function recognizeBoardFromCanvas(source) {
     const ocrResults = [];
     const expected = size * size;
     let usedTesseract = false;
+    const boardPhotoMatch = dieCells ? guessBoardWithPhotoTemplates(dieCells, size) : null;
 
     appendOcrLog(`Board extraction: ${dieCells ? `${dieCells.length} individual faces found` : "adaptive light-tile grid fallback"}`);
     appendOcrLog("Primary OCR: photo-trained glyph fingerprints + shape topology, tested at 4 rotations");
 
-    for (let index = 0; index < expected; index += 1) {
+    if (boardPhotoMatch) {
+      appendOcrLog(`Board-level photo match: ${(boardPhotoMatch.score * 100).toFixed(1)}% shape agreement, ${(boardPhotoMatch.margin * 100).toFixed(1)}% margin`);
+    }
+
+    if (boardPhotoMatch?.confident) {
+      appendOcrLog(`Board consensus: trained photo ${boardPhotoMatch.boardIndex + 1}, ${boardPhotoMatch.rotation}° orientation`);
+      ocrResults.push(...boardPhotoMatch.results);
+    }
+
+    for (let index = ocrResults.length; index < expected; index += 1) {
       const cellCanvas = dieCells?.[index] || extractBoardCell(boardCanvas, size, index);
       setOcrStatus(`Photo glyph ensemble: tile ${index + 1}/${expected}...`);
       await yieldToUi();
@@ -1034,6 +1044,71 @@ function guessTileWithTemplates(cellCanvas) {
   }
 
   return guessTileWithTemplateSet(cellCanvas, getTemplateMasks(), "template");
+}
+
+function guessBoardWithPhotoTemplates(cellCanvases, size) {
+  const templates = getPhotoTemplateMasks();
+  const boardArea = size * size;
+  if (cellCanvases.length !== boardArea || templates.length < boardArea) return null;
+
+  const boardTemplates = [];
+  for (let index = 0; index + boardArea <= templates.length; index += boardArea) {
+    boardTemplates.push(templates.slice(index, index + boardArea));
+  }
+
+  const preparedMasks = new Map();
+  const inkModes = ["red", "red-strict", "red-dark"];
+  const ranked = [];
+
+  for (let turns = 0; turns < 4; turns += 1) {
+    const boardRotation = turns * 90;
+    const glyphRotation = (360 - boardRotation) % 360;
+
+    for (const inkMode of inkModes) {
+      const cacheKey = `${glyphRotation}:${inkMode}`;
+      let glyphMasks = preparedMasks.get(cacheKey);
+      if (!glyphMasks) {
+        glyphMasks = cellCanvases.map((cellCanvas) => createGlyphMask(prepareTileForOcr(cellCanvas, glyphRotation, inkMode)));
+        preparedMasks.set(cacheKey, glyphMasks);
+      }
+
+      for (let boardIndex = 0; boardIndex < boardTemplates.length; boardIndex += 1) {
+        let orientedTemplates = boardTemplates[boardIndex];
+        for (let turn = 0; turn < turns; turn += 1) {
+          orientedTemplates = rotateBoardLetters(orientedTemplates, size, "clockwise");
+        }
+
+        const tileScores = glyphMasks.map((glyphMask, index) => compareGlyphMasks(glyphMask, orientedTemplates[index]));
+        const sortedScores = tileScores.slice().sort((left, right) => left - right);
+        const trimmedScores = sortedScores.slice(2);
+        const score = trimmedScores.reduce((sum, value) => sum + value, 0) / Math.max(1, trimmedScores.length);
+        ranked.push({ boardIndex, rotation: boardRotation, inkMode, score, tileScores, templates: orientedTemplates });
+      }
+    }
+  }
+
+  ranked.sort((left, right) => right.score - left.score);
+  const best = ranked[0];
+  if (!best) return null;
+  const differentBoard = ranked.find((candidate) => candidate.boardIndex !== best.boardIndex);
+  const margin = best.score - (differentBoard?.score || 0);
+  const confident = best.score >= 0.72 && margin >= 0.015;
+  return {
+    ...best,
+    margin,
+    confident,
+    results: best.templates.map((template, index) => ({
+      index,
+      text: template.label,
+      letter: template.label === "QU" ? "Q" : template.label,
+      rotation: (360 - best.rotation) % 360,
+      score: best.tileScores[index],
+      source: "board-photo-consensus",
+      inkMode: best.inkMode,
+      confidence: confident ? 99 : Math.round(best.tileScores[index] * 100),
+      margin
+    }))
+  };
 }
 
 function guessTileWithTemplateSet(cellCanvas, templates, source, forcedInkModes = null) {
