@@ -19,9 +19,9 @@ import {
   normalizeOcrLetter,
   rotateBoardLetters
 } from "./ocr-utils.js";
-import { PHOTO_DICE_TEMPLATE_MASKS } from "./ocr-photo-templates.js?v=ocr22";
+import { PHOTO_DICE_TEMPLATE_MASKS } from "./ocr-photo-templates.js?v=ocr22-ui2";
 
-const OCR_BUILD = "2026.07.13.2 / ocr22";
+const OCR_BUILD = "2026.07.13.3 / ocr22";
 const DATA_URL = "./data/nwl2023.txt";
 const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
 const HEIC_CONVERTER_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js";
@@ -84,7 +84,7 @@ let decodedPhotoTemplateMasks = null;
 boot();
 
 async function boot() {
-  elements.ocrBuild.textContent = `OCR build ${OCR_BUILD} - loaded`;
+  elements.ocrBuild.textContent = `OCR ${OCR_BUILD}`;
   elements.ocrBuild.dataset.loaded = "true";
   elements.boardInput.value = SAMPLE_BOARD_5;
   renderBoard();
@@ -559,6 +559,7 @@ async function recognizeBoardFromCanvas(source) {
     appendOcrLog(`Stopped: ${error.message}`);
     setOcrStatus(`OCR failed: ${error.message}`);
   } finally {
+    clearOcrLog();
     isOcrRunning = false;
     elements.scanButton.disabled = false;
   }
