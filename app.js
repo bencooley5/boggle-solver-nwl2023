@@ -19,6 +19,7 @@ import {
   normalizeOcrLetter,
   rotateBoardLetters
 } from "./ocr-utils.js";
+import { PHOTO_DICE_TEMPLATE_MASKS } from "./ocr-photo-templates.js?v=ocr6";
 
 const DATA_URL = "./data/nwl2023.txt";
 const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
@@ -72,6 +73,7 @@ let ocrWorkerPromise = null;
 let isOcrRunning = false;
 let lastOcrResults = [];
 let templateMasks = null;
+let decodedPhotoTemplateMasks = null;
 
 boot();
 
@@ -460,13 +462,15 @@ async function recognizeBoardFromCanvas(source) {
   elements.scanButton.disabled = true;
 
   try {
-    const boardCanvas = cropLikelyBoard(source);
     const size = getSize();
+    const dieCells = extractDieFaceCells(source, size);
+    const boardCanvas = dieCells ? null : cropLikelyBoard(source);
+    const extractionMode = dieCells ? "detected dice faces" : "fallback grid";
     const ocrResults = [];
     const expected = size * size;
 
     for (let index = 0; index < expected; index += 1) {
-      const cellCanvas = extractBoardCell(boardCanvas, size, index);
+      const cellCanvas = dieCells?.[index] || extractBoardCell(boardCanvas, size, index);
       let bestCandidate = guessTileWithTemplates(cellCanvas);
 
       if (isWeakOcrCandidate(bestCandidate)) {
@@ -503,7 +507,7 @@ async function recognizeBoardFromCanvas(source) {
     applyOcrResults(ocrResults);
     renderOcrReview(lastOcrResults);
     const weakCount = lastOcrResults.filter(isWeakOcrCandidate).length;
-    setOcrStatus(`OCR filled ${ocrResults.length} tiles. Review the scan${weakCount ? `; ${weakCount} low-confidence guesses are marked.` : "."}`);
+    setOcrStatus(`OCR filled ${ocrResults.length} tiles from ${extractionMode}. Review the scan${weakCount ? `; ${weakCount} low-confidence guesses are marked.` : "."}`);
   } catch (error) {
     setOcrStatus(`OCR failed: ${error.message}`);
   } finally {
@@ -557,6 +561,148 @@ function loadImageFromFile(file) {
   });
 }
 
+function extractDieFaceCells(source, size) {
+  const sourceWidth = source.videoWidth || source.naturalWidth || source.width;
+  const sourceHeight = source.videoHeight || source.naturalHeight || source.height;
+  const scanScale = Math.min(1, 1000 / Math.max(sourceWidth, sourceHeight));
+  const scanCanvas = document.createElement("canvas");
+  scanCanvas.width = Math.max(1, Math.round(sourceWidth * scanScale));
+  scanCanvas.height = Math.max(1, Math.round(sourceHeight * scanScale));
+  const scanContext = scanCanvas.getContext("2d", { willReadFrequently: true });
+  scanContext.imageSmoothingEnabled = false;
+  scanContext.drawImage(source, 0, 0, scanCanvas.width, scanCanvas.height);
+  const imageData = scanContext.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
+  const mask = new Uint8Array(scanCanvas.width * scanCanvas.height);
+  const seen = new Uint8Array(mask.length);
+
+  for (let y = 0; y < scanCanvas.height; y += 1) {
+    for (let x = 0; x < scanCanvas.width; x += 1) {
+      const dataIndex = (y * scanCanvas.width + x) * 4;
+      if (isTileFacePixel(imageData.data[dataIndex], imageData.data[dataIndex + 1], imageData.data[dataIndex + 2])) {
+        mask[y * scanCanvas.width + x] = 1;
+      }
+    }
+  }
+
+  const components = findTileFaceComponents(mask, scanCanvas.width, scanCanvas.height)
+    .filter((component) => isPlausibleDieFace(component, scanCanvas.width, scanCanvas.height))
+    .sort((left, right) => right.count - left.count)
+    .slice(0, size * size);
+
+  if (components.length !== size * size) return null;
+
+  const rows = groupDieComponentsIntoRows(components, size);
+  if (!rows) return null;
+
+  return rows.flatMap((row) => row.map((component) => cropDieFaceCell(source, component, scanScale)));
+}
+
+function findTileFaceComponents(mask, width, height) {
+  const seen = new Uint8Array(mask.length);
+  const stack = [];
+  const components = [];
+
+  for (let index = 0; index < mask.length; index += 1) {
+    if (!mask[index] || seen[index]) continue;
+
+    const startX = index % width;
+    const startY = Math.floor(index / width);
+    const component = {
+      count: 0,
+      minX: startX,
+      minY: startY,
+      maxX: startX,
+      maxY: startY,
+      sumX: 0,
+      sumY: 0
+    };
+
+    stack.length = 0;
+    stack.push(index);
+    seen[index] = 1;
+
+    while (stack.length) {
+      const current = stack.pop();
+      const x = current % width;
+      const y = Math.floor(current / width);
+      component.count += 1;
+      component.sumX += x;
+      component.sumY += y;
+      component.minX = Math.min(component.minX, x);
+      component.minY = Math.min(component.minY, y);
+      component.maxX = Math.max(component.maxX, x);
+      component.maxY = Math.max(component.maxY, y);
+
+      addTileNeighbor(mask, seen, stack, current - 1, width, height, x - 1, y);
+      addTileNeighbor(mask, seen, stack, current + 1, width, height, x + 1, y);
+      addTileNeighbor(mask, seen, stack, current - width, width, height, x, y - 1);
+      addTileNeighbor(mask, seen, stack, current + width, width, height, x, y + 1);
+    }
+
+    component.width = component.maxX - component.minX + 1;
+    component.height = component.maxY - component.minY + 1;
+    component.cx = component.sumX / component.count;
+    component.cy = component.sumY / component.count;
+    components.push(component);
+  }
+
+  return components;
+}
+
+function addTileNeighbor(mask, seen, stack, index, width, height, x, y) {
+  if (x < 0 || x >= width || y < 0 || y >= height || index < 0 || index >= mask.length) return;
+  if (!mask[index] || seen[index]) return;
+  seen[index] = 1;
+  stack.push(index);
+}
+
+function isPlausibleDieFace(component, width, height) {
+  const imageArea = width * height;
+  const areaRatio = component.count / imageArea;
+  const aspect = component.width / component.height;
+
+  return areaRatio > 0.004 &&
+    areaRatio < 0.04 &&
+    aspect > 0.55 &&
+    aspect < 1.6 &&
+    component.width > width * 0.045 &&
+    component.height > height * 0.045;
+}
+
+function groupDieComponentsIntoRows(components, size) {
+  const sorted = components.slice().sort((left, right) => left.cy - right.cy);
+  const rows = [];
+
+  for (let index = 0; index < sorted.length; index += size) {
+    const row = sorted.slice(index, index + size).sort((left, right) => left.cx - right.cx);
+    if (row.length !== size) return null;
+    rows.push(row);
+  }
+
+  return rows.length === size ? rows : null;
+}
+
+function cropDieFaceCell(source, component, scanScale) {
+  const sourceWidth = source.videoWidth || source.naturalWidth || source.width;
+  const sourceHeight = source.videoHeight || source.naturalHeight || source.height;
+  const padX = component.width * 0.08;
+  const padY = component.height * 0.08;
+  const sx = Math.max(0, (component.minX - padX) / scanScale);
+  const sy = Math.max(0, (component.minY - padY) / scanScale);
+  const sw = Math.min(sourceWidth - sx, (component.width + padX * 2) / scanScale);
+  const sh = Math.min(sourceHeight - sy, (component.height + padY * 2) / scanScale);
+  const canvas = document.createElement("canvas");
+  canvas.width = OCR_CANVAS_SIZE;
+  canvas.height = OCR_CANVAS_SIZE;
+  const context = canvas.getContext("2d");
+  context.imageSmoothingEnabled = false;
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(source, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  canvas.ocrPreferPhoto = true;
+  return canvas;
+}
+
 function cropLikelyBoard(source) {
   const tileCrop = cropLightTileGrid(source);
   if (tileCrop) return tileCrop;
@@ -586,6 +732,7 @@ function cropLightTileGrid(source) {
   scanCanvas.width = Math.max(1, Math.round(sourceWidth * scanScale));
   scanCanvas.height = Math.max(1, Math.round(sourceHeight * scanScale));
   const scanContext = scanCanvas.getContext("2d", { willReadFrequently: true });
+  scanContext.imageSmoothingEnabled = false;
   scanContext.drawImage(source, 0, 0, scanCanvas.width, scanCanvas.height);
   const imageData = scanContext.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
   let minX = scanCanvas.width;
@@ -626,7 +773,9 @@ function cropLightTileGrid(source) {
   const canvas = document.createElement("canvas");
   canvas.width = 1024;
   canvas.height = 1024;
-  canvas.getContext("2d").drawImage(source, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  const context = canvas.getContext("2d");
+  context.imageSmoothingEnabled = false;
+  context.drawImage(source, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
   canvas.ocrCellPadding = 0.08;
   return canvas;
 }
@@ -653,6 +802,7 @@ function extractBoardCell(boardCanvas, size, index) {
   canvas.width = OCR_CANVAS_SIZE;
   canvas.height = OCR_CANVAS_SIZE;
   const context = canvas.getContext("2d");
+  context.imageSmoothingEnabled = false;
   context.fillStyle = "#fff";
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(
@@ -674,6 +824,7 @@ function prepareTileForOcr(cellCanvas, rotation, inkMode = "gray") {
   canvas.width = OCR_CANVAS_SIZE;
   canvas.height = OCR_CANVAS_SIZE;
   const context = canvas.getContext("2d");
+  context.imageSmoothingEnabled = false;
   context.fillStyle = "#fff";
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.translate(canvas.width / 2, canvas.height / 2);
@@ -735,16 +886,27 @@ function enhanceTileCanvas(canvas) {
 }
 
 function guessTileWithTemplates(cellCanvas) {
+  const photoCandidate = guessTileWithTemplateSet(cellCanvas, getPhotoTemplateMasks(), "photo-template");
+  const photoThreshold = cellCanvas.ocrPreferPhoto ? 0.42 : 0.56;
+  if (photoCandidate.score >= photoThreshold) {
+    return photoCandidate;
+  }
+
+  return guessTileWithTemplateSet(cellCanvas, getTemplateMasks(), "template");
+}
+
+function guessTileWithTemplateSet(cellCanvas, templates, source) {
   let best = null;
   let secondScore = 0;
+  const inkModes = source === "photo-template" ? ["red"] : ["red", "gray"];
 
-  for (const inkMode of ["red", "gray"]) {
+  for (const inkMode of inkModes) {
     for (const rotation of OCR_ROTATIONS) {
       const tileCanvas = prepareTileForOcr(cellCanvas, rotation, inkMode);
       const glyphMask = createGlyphMask(tileCanvas);
       if (!glyphMask.pixels) continue;
 
-      for (const template of getTemplateMasks()) {
+      for (const template of templates) {
         const score = compareGlyphMasks(glyphMask.mask, template.mask);
         if (!best || score > best.score) {
           secondScore = best?.score || 0;
@@ -753,7 +915,7 @@ function guessTileWithTemplates(cellCanvas) {
             letter: template.label === "QU" ? "Q" : template.label,
             rotation,
             score,
-            source: "template",
+            source,
             inkMode
           };
         } else if (score > secondScore) {
@@ -768,14 +930,17 @@ function guessTileWithTemplates(cellCanvas) {
   }
 
   const margin = Math.max(0, best.score - secondScore);
-  const confidence = Math.max(0, Math.min(99, Math.round(best.score * 120 + margin * 160)));
+  const confidentMatch = best.score >= 0.84 && margin >= 0.015;
+  const confidence = confidentMatch
+    ? 99
+    : Math.max(0, Math.min(96, Math.round(best.score * 82 + margin * 360)));
   return { ...best, confidence, margin };
 }
 
 function getTemplateMasks() {
   if (templateMasks) return templateMasks;
 
-  templateMasks = [];
+  templateMasks = getPhotoTemplateMasks();
   for (const label of OCR_TEMPLATE_LABELS) {
     for (const fontFamily of OCR_TEMPLATE_FONTS) {
       for (const weight of [700]) {
@@ -800,6 +965,34 @@ function getTemplateMasks() {
   }
 
   return templateMasks;
+}
+
+function getPhotoTemplateMasks() {
+  if (decodedPhotoTemplateMasks) return decodedPhotoTemplateMasks;
+
+  decodedPhotoTemplateMasks = PHOTO_DICE_TEMPLATE_MASKS.map((template) => ({
+    label: template.label,
+    mask: unpackTemplateMask(template.data),
+    source: "photo-template"
+  }));
+
+  return decodedPhotoTemplateMasks.slice();
+}
+
+function unpackTemplateMask(data) {
+  const binary = atob(data);
+  const mask = new Uint8Array(OCR_MASK_SIZE * OCR_MASK_SIZE);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    const byte = binary.charCodeAt(index);
+    for (let bit = 0; bit < 8; bit += 1) {
+      const maskIndex = index * 8 + bit;
+      if (maskIndex >= mask.length) break;
+      mask[maskIndex] = (byte >> (7 - bit)) & 1;
+    }
+  }
+
+  return mask;
 }
 
 function createGlyphMask(canvas) {
