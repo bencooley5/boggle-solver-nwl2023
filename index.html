@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Boggle Solver - NWL2023</title>
-    <link rel="stylesheet" href="./styles.css?v=ocr22">
+    <link rel="stylesheet" href="./styles.css?v=ocr22-ui2">
   </head>
   <body>
     <header class="topbar">
@@ -31,7 +31,7 @@
         </div>
         <div class="hero-copy">
           <h1>Boggle Solver</h1>
-          <p>powered by the <a href="https://scrabbleplayers.org/w/NWL2023" target="_blank" rel="noreferrer">NWL2023 US/Canada Scrabble lexicon</a></p>
+          <p class="build-line">powered by the <a href="https://scrabbleplayers.org/w/NWL2023" target="_blank" rel="noreferrer">NWL2023</a> <strong id="ocr-build" class="ocr-build">OCR 22 loading...</strong> <button id="update-button" class="update-button" type="button">update</button></p>
         </div>
       </section>
 
@@ -67,12 +67,6 @@
           <span>min length</span>
           <input id="min-length-input" type="number" min="2" max="36" step="1" value="3" disabled>
         </label>
-      </section>
-
-      <section class="build-row" aria-label="App version">
-        <strong id="ocr-build" class="ocr-build">OCR build 2026.07.13.2 / ocr22 - loading...</strong>
-        <button id="update-button" class="update-button" type="button">update app</button>
-        <span>Newest version shows <strong>ocr22</strong>.</span>
       </section>
 
       <p id="load-status" class="load-status" role="status">Loading NWL2023 dictionary...</p>
@@ -127,6 +121,6 @@
       </div>
     </div>
 
-    <script type="module" src="./app.js?v=ocr22"></script>
+    <script type="module" src="./app.js?v=ocr22-ui2"></script>
   </body>
 </html>

@@ -17,6 +17,7 @@ import {
   normalizeOcrLetter,
   rotateBoardLetters
 } from "../ocr-utils.js";
+import { PHOTO_DICE_TEMPLATE_MASKS } from "../ocr-photo-templates.js";
 
 test("parses Q as a Qu tile and accepts explicit Qu input", () => {
   assert.deepEqual(parseBoardInput("QABCDEFGHIJKLMNO", 4).tiles[0], "QU");
@@ -109,4 +110,25 @@ test("local NWL2023 data includes definitions and solves the sample board", asyn
   assert.equal(dictionary.totalEntries, 196601);
   assert.ok(gestate);
   assert.match(gestate.definition, /carry in the uterus/);
+});
+
+test("OCR photo fixtures include all four uploaded boards with exact tile labels", () => {
+  const fixtureBoards = [];
+  for (let index = 0; index < PHOTO_DICE_TEMPLATE_MASKS.length; index += 25) {
+    fixtureBoards.push(PHOTO_DICE_TEMPLATE_MASKS.slice(index, index + 25).map(({ label }) => label).join(""));
+  }
+
+  assert.ok(fixtureBoards.includes("ANIPENRNAEOIATIEBTHSFOSOL"), "IMG_7267 should match exactly");
+  assert.ok(fixtureBoards.includes("HOARSCHARTAEELAITINLFNMAH"), "IMG_7268 should match exactly");
+  assert.ok(fixtureBoards.includes("NEHRYECEOEUACOIMMEXIITGAH"), "IMG_7269 should match exactly");
+  assert.ok(fixtureBoards.includes("MRVYYNTCHISSTENEGTDEEOTNH"), "IMG_7271 should match exactly");
+});
+
+test("OCR build badge is in the top hero and the old version box is removed", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+
+  assert.match(html, /class="build-line"[^>]*>[^<]*powered by the[\s\S]*id="ocr-build"/);
+  assert.doesNotMatch(html, /class="build-row"/);
+  assert.match(app, /finally \{\s*clearOcrLog\(\);/);
 });

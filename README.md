@@ -36,6 +36,6 @@ The `scan board` button opens the device camera on HTTPS-capable browsers, captu
 
 While a scan runs, the app prints the active extraction and OCR stages below the status line so it is clear whether the photo fingerprint matcher or Tesseract fallback is in use.
 
-The green build row shows the loaded OCR build. Use its `update app` button to clear same-origin browser caches and reload through a fresh URL when checking for a newer local version. The bundled local server also sends no-store headers for app code. If an older page is already stuck in browser cache, open `/latest-ocr22.html` once.
+The compact badge beside the NWL2023 label at the top shows the loaded OCR build. Use its `update` button to clear same-origin browser caches and reload through a fresh URL when checking for a newer local version. The live scan-method console is visible only while OCR is running and clears when the scan finishes. The bundled local server also sends no-store headers for app code. If an older page is already stuck in browser cache, open `/latest-ocr22.html` once.
 
 Camera OCR is best-effort. Good lighting, a square-on board photo, and reviewing the filled letters before solving will matter.
