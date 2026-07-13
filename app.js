@@ -19,10 +19,11 @@ import {
   normalizeOcrLetter,
   rotateBoardLetters
 } from "./ocr-utils.js";
-import { PHOTO_DICE_TEMPLATE_MASKS } from "./ocr-photo-templates.js?v=ocr6";
+import { PHOTO_DICE_TEMPLATE_MASKS } from "./ocr-photo-templates.js?v=ocr8";
 
 const DATA_URL = "./data/nwl2023.txt";
 const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+const HEIC_CONVERTER_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js";
 const OCR_CANVAS_SIZE = 180;
 const OCR_MASK_SIZE = 64;
 const OCR_TEMPLATE_LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").concat("QU");
@@ -70,6 +71,7 @@ let selectedStartIndex = null;
 let sortMode = "length";
 let cameraStream = null;
 let ocrWorkerPromise = null;
+let heicConverterPromise = null;
 let isOcrRunning = false;
 let lastOcrResults = [];
 let templateMasks = null;
@@ -546,7 +548,51 @@ function loadTesseract() {
   });
 }
 
-function loadImageFromFile(file) {
+async function loadImageFromFile(file) {
+  try {
+    return await loadImageFromBlob(file);
+  } catch (error) {
+    if (!isHeicFile(file)) {
+      throw error;
+    }
+  }
+
+  setOcrStatus("Converting HEIC photo...");
+  const heic2any = await getHeicConverter();
+  const converted = await heic2any({
+    blob: file,
+    toType: "image/jpeg",
+    quality: 0.92
+  });
+  const convertedBlob = Array.isArray(converted) ? converted[0] : converted;
+  return loadImageFromBlob(convertedBlob);
+}
+
+async function loadImageFromBlob(blob) {
+  if (window.createImageBitmap) {
+    try {
+      const bitmap = await window.createImageBitmap(blob, { imageOrientation: "from-image" });
+      return imageBitmapToCanvas(bitmap);
+    } catch (error) {
+      // Some browsers cannot decode HEIC or honor image bitmap options; fall back to Image.
+    }
+  }
+
+  return loadHtmlImageFromBlob(blob);
+}
+
+function imageBitmapToCanvas(bitmap) {
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const context = canvas.getContext("2d");
+  context.imageSmoothingEnabled = false;
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close?.();
+  return canvas;
+}
+
+function loadHtmlImageFromBlob(blob) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
@@ -557,8 +603,38 @@ function loadImageFromFile(file) {
       URL.revokeObjectURL(image.src);
       reject(new Error("image load failed"));
     };
-    image.src = URL.createObjectURL(file);
+    image.src = URL.createObjectURL(blob);
   });
+}
+
+function isHeicFile(file) {
+  return /hei[cf]/i.test(file.type) || /\.(hei[cf])$/i.test(file.name || "");
+}
+
+async function getHeicConverter() {
+  if (!heicConverterPromise) {
+    heicConverterPromise = new Promise((resolve, reject) => {
+      if (window.heic2any) {
+        resolve(window.heic2any);
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = HEIC_CONVERTER_SCRIPT_URL;
+      script.async = true;
+      script.onload = () => {
+        if (window.heic2any) {
+          resolve(window.heic2any);
+        } else {
+          reject(new Error("HEIC converter unavailable"));
+        }
+      };
+      script.onerror = () => reject(new Error("Could not load HEIC converter"));
+      document.head.append(script);
+    });
+  }
+
+  return heicConverterPromise;
 }
 
 function extractDieFaceCells(source, size) {
