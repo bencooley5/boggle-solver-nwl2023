@@ -368,6 +368,49 @@ a:hover {
   background: #e0e0e0;
 }
 
+.build-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 10px;
+  padding: 7px 9px;
+  border: 2px inset #9fbf7b;
+  background: #e8ffd0;
+  color: #173800;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 12px;
+}
+
+.ocr-build {
+  color: #005b16;
+}
+
+.ocr-build[data-loaded="true"]::before {
+  content: "✓ ";
+}
+
+.update-button {
+  min-height: 28px;
+  padding: 2px 10px;
+  border: 3px outset #94cbff;
+  background: linear-gradient(#d8f3ff, #62afe5);
+  color: #001f45;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.update-button:active {
+  border-style: inset;
+}
+
+.update-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .load-status {
   min-height: 22px;
   margin: 0 0 10px;
@@ -393,6 +436,24 @@ a:hover {
 
 .ocr-status:empty,
 .ocr-status[hidden] {
+  display: none;
+}
+
+.ocr-log {
+  display: grid;
+  gap: 3px;
+  margin: -4px 0 10px;
+  padding: 7px 9px;
+  border: 2px inset #003e34;
+  background: #001c17;
+  color: #66ff66;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.ocr-log[hidden] {
   display: none;
 }
 
@@ -943,6 +1004,24 @@ a:hover {
     margin: 0;
     padding: 5px 6px;
     font-size: 11px;
+  }
+
+  .build-row {
+    gap: 5px;
+    margin: 0;
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+
+  .build-row > span {
+    display: none;
+  }
+
+  .update-button {
+    min-height: 24px;
+    padding: 1px 6px;
+    border-width: 2px;
+    font-size: 9px;
   }
 
   .toggle-control,

@@ -32,6 +32,10 @@ npm test
 
 ## Camera OCR
 
-The `scan board` button opens the device camera on HTTPS-capable browsers, captures the centered square guide area, splits it into the selected board size, and OCRs each tile at 0, 90, 180, and 270 degrees. OCR runs client-side in the browser through Tesseract.js loaded from jsDelivr.
+The `scan board` button opens the device camera on HTTPS-capable browsers, captures the centered square guide area, and detects individual die faces before using a photo-trained glyph fingerprint matcher. The matcher combines red-ink threshold variants, silhouette overlap, row/column shape profiles, enclosed-region topology, and 0/90/180/270-degree rotation checks. Uncertain tiles alone fall back to Tesseract.js, loaded from jsDelivr and run client-side.
+
+While a scan runs, the app prints the active extraction and OCR stages below the status line so it is clear whether the photo fingerprint matcher or Tesseract fallback is in use.
+
+The green build row shows the loaded OCR build. Use its `update app` button to clear same-origin browser caches and reload through a fresh URL when checking for a newer local version. The bundled local server also sends no-store headers for app code. If an older page is already stuck in browser cache, open `/latest-ocr22.html` once.
 
 Camera OCR is best-effort. Good lighting, a square-on board photo, and reviewing the filled letters before solving will matter.

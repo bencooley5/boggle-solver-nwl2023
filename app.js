@@ -19,8 +19,9 @@ import {
   normalizeOcrLetter,
   rotateBoardLetters
 } from "./ocr-utils.js";
-import { PHOTO_DICE_TEMPLATE_MASKS } from "./ocr-photo-templates.js?v=ocr10";
+import { PHOTO_DICE_TEMPLATE_MASKS } from "./ocr-photo-templates.js?v=ocr22";
 
+const OCR_BUILD = "2026.07.13.2 / ocr22";
 const DATA_URL = "./data/nwl2023.txt";
 const TESSERACT_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
 const HEIC_CONVERTER_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js";
@@ -45,6 +46,9 @@ const elements = {
   cameraInput: document.querySelector("#camera-input"),
   loadStatus: document.querySelector("#load-status"),
   ocrStatus: document.querySelector("#ocr-status"),
+  ocrLog: document.querySelector("#ocr-log"),
+  ocrBuild: document.querySelector("#ocr-build"),
+  updateButton: document.querySelector("#update-button"),
   solveStatus: document.querySelector("#solve-status"),
   board: document.querySelector("#board"),
   definition: document.querySelector("#definition"),
@@ -80,6 +84,8 @@ let decodedPhotoTemplateMasks = null;
 boot();
 
 async function boot() {
+  elements.ocrBuild.textContent = `OCR build ${OCR_BUILD} - loaded`;
+  elements.ocrBuild.dataset.loaded = "true";
   elements.boardInput.value = SAMPLE_BOARD_5;
   renderBoard();
   bindEvents();
@@ -155,6 +161,7 @@ function bindEvents() {
   elements.closeOcrReviewButton.addEventListener("click", () => {
     elements.ocrReviewPanel.hidden = true;
   });
+  elements.updateButton.addEventListener("click", forceAppUpdate);
   elements.cameraPanel.addEventListener("click", (event) => {
     if (event.target === elements.cameraPanel) {
       closeCameraScanner();
@@ -186,6 +193,29 @@ function bindEvents() {
     updateSortButtons();
     renderResults();
   });
+}
+
+async function forceAppUpdate() {
+  elements.updateButton.disabled = true;
+  elements.updateButton.textContent = "updating...";
+  setOcrStatus("Clearing cached app files and loading the newest build...");
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
+    if ("caches" in window) {
+      const cacheNames = await window.caches.keys();
+      await Promise.all(cacheNames.map((cacheName) => window.caches.delete(cacheName)));
+    }
+  } catch (error) {
+    console.warn("Could not clear every browser cache before updating", error);
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.set("fresh", Date.now().toString());
+  window.location.replace(url);
 }
 
 function solveCurrentBoard() {
@@ -392,6 +422,7 @@ function updateSortButtons() {
 async function openCameraScanner() {
   if (isOcrRunning) return;
   setOcrStatus("");
+  clearOcrLog();
 
   if (!navigator.mediaDevices?.getUserMedia) {
     setOcrStatus("Camera stream unavailable; choose a photo.");
@@ -465,18 +496,33 @@ async function recognizeBoardFromCanvas(source) {
 
   try {
     const size = getSize();
+    startOcrLog(`OCR build: ${OCR_BUILD}`);
+    appendOcrLog("OCR strategy: adaptive dice detection");
+    setOcrStatus(`Detecting the ${size * size} die faces...`);
+    await yieldToUi();
     const dieCells = extractDieFaceCells(source, size);
     const boardCanvas = dieCells ? null : cropLikelyBoard(source);
     const extractionMode = dieCells ? "detected dice faces" : "fallback grid";
     const ocrResults = [];
     const expected = size * size;
+    let usedTesseract = false;
+
+    appendOcrLog(`Board extraction: ${dieCells ? `${dieCells.length} individual faces found` : "adaptive light-tile grid fallback"}`);
+    appendOcrLog("Primary OCR: photo-trained glyph fingerprints + shape topology, tested at 4 rotations");
 
     for (let index = 0; index < expected; index += 1) {
       const cellCanvas = dieCells?.[index] || extractBoardCell(boardCanvas, size, index);
+      setOcrStatus(`Photo glyph ensemble: tile ${index + 1}/${expected}...`);
+      await yieldToUi();
       let bestCandidate = guessTileWithTemplates(cellCanvas);
 
       if (isWeakOcrCandidate(bestCandidate)) {
-        setOcrStatus(`OCR tile ${index + 1}/${expected}...`);
+        if (!usedTesseract) {
+          appendOcrLog("Fallback OCR: Tesseract single-character pass on uncertain tiles only");
+          usedTesseract = true;
+        }
+        setOcrStatus(`Tesseract fallback: tile ${index + 1}/${expected}, red + grayscale rotations...`);
+        await yieldToUi();
         const worker = await getOcrWorker();
         const candidates = [bestCandidate];
 
@@ -495,8 +541,6 @@ async function recognizeBoardFromCanvas(source) {
         }
 
         bestCandidate = chooseBestOcrCandidate(candidates);
-      } else {
-        setOcrStatus(`Matched tile ${index + 1}/${expected}...`);
       }
 
       ocrResults.push({
@@ -509,13 +553,19 @@ async function recognizeBoardFromCanvas(source) {
     applyOcrResults(ocrResults);
     renderOcrReview(lastOcrResults);
     const weakCount = lastOcrResults.filter(isWeakOcrCandidate).length;
+    appendOcrLog(`Finished: ${ocrResults.length}/${expected} tiles recognized${weakCount ? `, ${weakCount} marked for review` : ", all high confidence"}`);
     setOcrStatus(`OCR filled ${ocrResults.length} tiles from ${extractionMode}. Review the scan${weakCount ? `; ${weakCount} low-confidence guesses are marked.` : "."}`);
   } catch (error) {
+    appendOcrLog(`Stopped: ${error.message}`);
     setOcrStatus(`OCR failed: ${error.message}`);
   } finally {
     isOcrRunning = false;
     elements.scanButton.disabled = false;
   }
+}
+
+function yieldToUi() {
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
 }
 
 async function getOcrWorker() {
@@ -907,15 +957,15 @@ function prepareTileForOcr(cellCanvas, rotation, inkMode = "gray") {
   context.rotate((rotation * Math.PI) / 180);
   context.drawImage(cellCanvas, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
 
-  if (inkMode === "red") {
-    isolateRedInk(canvas);
+  if (inkMode.startsWith("red")) {
+    isolateRedInk(canvas, inkMode);
   } else {
     enhanceTileCanvas(canvas);
   }
   return canvas;
 }
 
-function isolateRedInk(canvas) {
+function isolateRedInk(canvas, inkMode = "red") {
   const context = canvas.getContext("2d");
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 
@@ -924,7 +974,11 @@ function isolateRedInk(canvas) {
     const green = imageData.data[index + 1];
     const blue = imageData.data[index + 2];
     const gray = red * 0.299 + green * 0.587 + blue * 0.114;
-    const isRedInk = red > 75 && red - green > 28 && red - blue > 18 && gray < 190;
+    const isRedInk = inkMode === "red-strict"
+      ? red > 85 && red - green > 42 && red - blue > 32 && gray < 195
+      : inkMode === "red-dark"
+        ? red > 55 && red - green > 15 && red - blue > 10 && gray < 170
+        : red > 75 && red - green > 28 && red - blue > 18 && gray < 190;
     const value = isRedInk ? 0 : 255;
     imageData.data[index] = value;
     imageData.data[index + 1] = value;
@@ -968,13 +1022,22 @@ function guessTileWithTemplates(cellCanvas) {
     return photoCandidate;
   }
 
+  const thresholdCandidate = guessTileWithTemplateSet(
+    cellCanvas,
+    getPhotoTemplateMasks(),
+    "photo-template",
+    ["red-strict", "red-dark"]
+  );
+  if (thresholdCandidate.score >= photoThreshold) {
+    return thresholdCandidate;
+  }
+
   return guessTileWithTemplateSet(cellCanvas, getTemplateMasks(), "template");
 }
 
-function guessTileWithTemplateSet(cellCanvas, templates, source) {
-  let best = null;
-  let secondScore = 0;
-  const inkModes = source === "photo-template" ? ["red"] : ["red", "gray"];
+function guessTileWithTemplateSet(cellCanvas, templates, source, forcedInkModes = null) {
+  const bestByLabel = new Map();
+  const inkModes = forcedInkModes || (source === "photo-template" ? ["red"] : ["red", "gray"]);
 
   for (const inkMode of inkModes) {
     for (const rotation of OCR_ROTATIONS) {
@@ -983,34 +1046,53 @@ function guessTileWithTemplateSet(cellCanvas, templates, source) {
       if (!glyphMask.pixels) continue;
 
       for (const template of templates) {
-        const score = compareGlyphMasks(glyphMask.mask, template.mask);
-        if (!best || score > best.score) {
-          secondScore = best?.score || 0;
-          best = {
+        const score = compareGlyphMasks(glyphMask, template);
+        if (score >= 0.9999) {
+          return {
+            text: template.label,
+            letter: template.label === "QU" ? "Q" : template.label,
+            rotation,
+            score,
+            source,
+            inkMode,
+            confidence: 99,
+            margin: 1,
+            alternatives: []
+          };
+        }
+        const previous = bestByLabel.get(template.label);
+        if (!previous || score > previous.score) {
+          bestByLabel.set(template.label, {
             text: template.label,
             letter: template.label === "QU" ? "Q" : template.label,
             rotation,
             score,
             source,
             inkMode
-          };
-        } else if (score > secondScore) {
-          secondScore = score;
+          });
         }
       }
     }
   }
 
+  const ranked = Array.from(bestByLabel.values()).sort((left, right) => right.score - left.score);
+  const best = ranked[0];
   if (!best) {
     return { text: "", letter: "", confidence: 0, rotation: 0, score: 0, source: "template" };
   }
 
+  const secondScore = ranked[1]?.score || 0;
   const margin = Math.max(0, best.score - secondScore);
   const confidentMatch = best.score >= 0.84 && margin >= 0.015;
   const confidence = confidentMatch
     ? 99
     : Math.max(0, Math.min(96, Math.round(best.score * 82 + margin * 360)));
-  return { ...best, confidence, margin };
+  return {
+    ...best,
+    confidence,
+    margin,
+    alternatives: ranked.slice(1, 4).map(({ letter, score }) => ({ letter, score }))
+  };
 }
 
 function getTemplateMasks() {
@@ -1034,7 +1116,7 @@ function getTemplateMasks() {
 
         const glyphMask = createGlyphMask(canvas);
         if (glyphMask.pixels) {
-          templateMasks.push({ label, mask: glyphMask.mask });
+          templateMasks.push({ label, mask: glyphMask.mask, features: glyphMask.features });
         }
       }
     }
@@ -1050,7 +1132,7 @@ function getPhotoTemplateMasks() {
     label: template.label,
     mask: unpackTemplateMask(template.data),
     source: "photo-template"
-  }));
+  })).map((template) => ({ ...template, features: getMaskFeatures(template.mask) }));
 
   return decodedPhotoTemplateMasks.slice();
 }
@@ -1106,7 +1188,8 @@ function createGlyphMask(canvas) {
   }
 
   if (!pixels || maxX < minX || maxY < minY) {
-    return { mask: new Uint8Array(OCR_MASK_SIZE * OCR_MASK_SIZE), pixels: 0 };
+    const mask = new Uint8Array(OCR_MASK_SIZE * OCR_MASK_SIZE);
+    return { mask, pixels: 0, features: getMaskFeatures(mask) };
   }
 
   const glyphWidth = maxX - minX + 1;
@@ -1135,26 +1218,105 @@ function createGlyphMask(canvas) {
   }
 
   const mask = dilateMask(normalizedMask, OCR_MASK_SIZE);
-  return { mask, pixels: countMaskPixels(mask) };
+  const features = getMaskFeatures(mask);
+  return { mask, pixels: features.pixels, features };
 }
 
-function compareGlyphMasks(candidateMask, templateMask) {
+function compareGlyphMasks(candidateGlyph, template) {
+  const candidateMask = candidateGlyph.mask;
+  const templateMask = template.mask;
   let intersection = 0;
-  let union = 0;
-  let templatePixels = 0;
 
-  for (let index = 0; index < candidateMask.length; index += 1) {
-    const candidate = candidateMask[index];
-    const template = templateMask[index];
-    if (template) templatePixels += 1;
-    if (candidate || template) union += 1;
-    if (candidate && template) intersection += 1;
+  for (const index of candidateGlyph.features.pixelIndices) {
+    if (candidateMask[index] && templateMask[index]) intersection += 1;
   }
 
+  const templatePixels = template.features.pixels;
+  const union = candidateGlyph.features.pixels + templatePixels - intersection;
   if (!union || !templatePixels) return 0;
   const jaccard = intersection / union;
   const coverage = intersection / templatePixels;
-  return jaccard * 0.7 + coverage * 0.3;
+  const profile = compareMaskProfiles(candidateGlyph.features, template.features);
+  const density = 1 - Math.min(1, Math.abs(candidateGlyph.features.density - template.features.density) / 0.35);
+  const topology = candidateGlyph.features.holes === template.features.holes ? 1 : 0;
+  return (jaccard * 0.68 + coverage * 0.32) * 0.72 + profile * 0.18 + density * 0.05 + topology * 0.05;
+}
+
+function getMaskFeatures(mask) {
+  const rows = new Float32Array(OCR_MASK_SIZE);
+  const columns = new Float32Array(OCR_MASK_SIZE);
+  const indices = [];
+  let pixels = 0;
+
+  for (let y = 0; y < OCR_MASK_SIZE; y += 1) {
+    for (let x = 0; x < OCR_MASK_SIZE; x += 1) {
+      if (!mask[y * OCR_MASK_SIZE + x]) continue;
+      rows[y] += 1 / OCR_MASK_SIZE;
+      columns[x] += 1 / OCR_MASK_SIZE;
+      indices.push(y * OCR_MASK_SIZE + x);
+      pixels += 1;
+    }
+  }
+
+  return {
+    rows,
+    columns,
+    pixels,
+    pixelIndices: Uint16Array.from(indices),
+    density: pixels / mask.length,
+    holes: countMaskHoles(mask)
+  };
+}
+
+function compareMaskProfiles(candidate, template) {
+  let difference = 0;
+  for (let index = 0; index < OCR_MASK_SIZE; index += 1) {
+    difference += Math.abs(candidate.rows[index] - template.rows[index]);
+    difference += Math.abs(candidate.columns[index] - template.columns[index]);
+  }
+  return Math.max(0, 1 - difference / (OCR_MASK_SIZE * 2));
+}
+
+function countMaskHoles(mask) {
+  const seen = new Uint8Array(mask.length);
+  const stack = [];
+  let holes = 0;
+
+  for (let y = 0; y < OCR_MASK_SIZE; y += 1) {
+    for (let x = 0; x < OCR_MASK_SIZE; x += 1) {
+      const index = y * OCR_MASK_SIZE + x;
+      if (mask[index] || seen[index]) continue;
+      let touchesEdge = false;
+      stack.length = 0;
+      stack.push(index);
+      seen[index] = 1;
+
+      while (stack.length) {
+        const current = stack.pop();
+        const currentX = current % OCR_MASK_SIZE;
+        const currentY = Math.floor(current / OCR_MASK_SIZE);
+        if (currentX === 0 || currentY === 0 || currentX === OCR_MASK_SIZE - 1 || currentY === OCR_MASK_SIZE - 1) {
+          touchesEdge = true;
+        }
+        addMaskBackgroundNeighbor(mask, seen, stack, currentX - 1, currentY);
+        addMaskBackgroundNeighbor(mask, seen, stack, currentX + 1, currentY);
+        addMaskBackgroundNeighbor(mask, seen, stack, currentX, currentY - 1);
+        addMaskBackgroundNeighbor(mask, seen, stack, currentX, currentY + 1);
+      }
+
+      if (!touchesEdge) holes += 1;
+    }
+  }
+
+  return Math.min(3, holes);
+}
+
+function addMaskBackgroundNeighbor(mask, seen, stack, x, y) {
+  if (x < 0 || y < 0 || x >= OCR_MASK_SIZE || y >= OCR_MASK_SIZE) return;
+  const index = y * OCR_MASK_SIZE + x;
+  if (mask[index] || seen[index]) return;
+  seen[index] = 1;
+  stack.push(index);
 }
 
 function dilateMask(mask, size) {
@@ -1176,10 +1338,6 @@ function dilateMask(mask, size) {
     }
   }
   return output;
-}
-
-function countMaskPixels(mask) {
-  return mask.reduce((sum, value) => sum + value, 0);
 }
 
 function getOtsuThreshold(values) {
@@ -1301,6 +1459,26 @@ function cleanReviewInput(value) {
   const cleaned = String(value || "").toUpperCase().replace(/[^A-Z]/g, "");
   if (cleaned.startsWith("QU")) return "Qu";
   return cleaned.slice(0, 1);
+}
+
+function startOcrLog(message) {
+  clearOcrLog();
+  appendOcrLog(message);
+}
+
+function appendOcrLog(message) {
+  if (!elements.ocrLog || !message) return;
+  const line = document.createElement("div");
+  line.textContent = `> ${message}`;
+  elements.ocrLog.append(line);
+  elements.ocrLog.hidden = false;
+  console.info(`[Boggle OCR] ${message}`);
+}
+
+function clearOcrLog() {
+  if (!elements.ocrLog) return;
+  elements.ocrLog.replaceChildren();
+  elements.ocrLog.hidden = true;
 }
 
 function setOcrStatus(message) {
