@@ -7,6 +7,7 @@ import {
   chooseRichBoggleBoard,
   parseBoardInput,
   parseDictionaryText,
+  randomBoard,
   resolveDefinition,
   scoreWord,
   solveBoard
@@ -108,6 +109,11 @@ test("chooses a playable Boggle practice board and keeps word paths", () => {
   assert.deepEqual(round.words.map(({ word }) => word).sort(), ["CAT", "CATS", "SAT"]);
   assert.ok(round.words.every(({ path }) => path.length >= 3));
   assert.equal(round.totalPoints, 3);
+});
+
+test("creates compact 2x2 and 3x3 Boggle boards", () => {
+  assert.equal(randomBoard(2, () => 0).length, 4);
+  assert.equal(randomBoard(3, () => 0).length, 9);
 });
 
 test("parses Q as a Qu tile and accepts explicit Qu input", () => {

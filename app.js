@@ -11,7 +11,7 @@ import {
   randomBoard,
   solveBoard,
   tilesToInput
-} from "./solver-core.js?v=boggle-practice3";
+} from "./solver-core.js?v=boggle-practice4";
 import {
   OCR_ROTATIONS,
   chooseBestOcrCandidate,
@@ -286,7 +286,7 @@ function startBogglePracticeRound() {
     let round = chooseRichBoggleBoard(dictionary, {
       size,
       minLength,
-      sampleSize: size === 4 ? 24 : 12,
+      sampleSize: ({ 2: 80, 3: 48, 4: 24, 5: 12, 6: 12 }[size] ?? 16),
       excludedBoards: usedPracticeBoggleBoards
     });
     if (!round) {
