@@ -123,6 +123,31 @@ export function randomBoard(size, rng = Math.random) {
   });
 }
 
+export function chooseRichBoggleBoard(dictionary, options = {}) {
+  const size = Number(options.size) || 4;
+  const minLength = Number(options.minLength) || MIN_BOGGLE_WORD_LENGTH;
+  const sampleSize = Math.max(1, Number(options.sampleSize) || 16);
+  const targetWords = Number(options.targetWords) || ({ 4: 100, 5: 300, 6: 400 }[size] ?? 100);
+  const rng = options.rng || Math.random;
+  const excludedBoards = options.excludedBoards || new Set();
+  const createBoard = options.createBoard || randomBoard;
+  let best = null;
+
+  for (let sample = 0; sample < sampleSize; sample += 1) {
+    const tiles = createBoard(size, rng);
+    const boardKey = tilesToInput(tiles);
+    if (excludedBoards.has(boardKey)) continue;
+    const words = solveBoard(tiles, size, dictionary, { minLength });
+    const totalPoints = words.reduce((sum, word) => sum + word.score, 0);
+    const score = -Math.abs(words.length - targetWords) + totalPoints * 0.0001;
+    if (!best || score > best.score) {
+      best = { tiles, boardKey, words, totalPoints, score };
+    }
+  }
+
+  return best;
+}
+
 export function solveBoard(tiles, size, dictionary, options = {}) {
   const minLength = options.minLength ?? MIN_BOGGLE_WORD_LENGTH;
   const found = new Map();

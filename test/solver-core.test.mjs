@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   SAMPLE_BOARD_5,
+  chooseRichBoggleBoard,
   parseBoardInput,
   parseDictionaryText,
   resolveDefinition,
@@ -89,6 +90,26 @@ test("chooses a full-length rack with playable sub-anagrams", () => {
 
   assert.equal(round.sortedRack, "ACENRS");
   assert.ok(round.words.some(({ word }) => word === "CRANES"));
+});
+
+test("chooses a playable Boggle practice board and keeps word paths", () => {
+  const dictionary = parseDictionaryText([
+    "AT in the position of [prep]",
+    "CAT a feline animal [n CATS]",
+    "CATS <cat=n> [n]",
+    "SAT <sit=v> [v]"
+  ].join("\n"), { minLength: 2 });
+  const round = chooseRichBoggleBoard(dictionary, {
+    size: 2,
+    minLength: 3,
+    sampleSize: 1,
+    createBoard: () => ["C", "A", "T", "S"]
+  });
+
+  assert.equal(round.boardKey, "CATS");
+  assert.deepEqual(round.words.map(({ word }) => word).sort(), ["CAT", "CATS", "SAT"]);
+  assert.ok(round.words.every(({ path }) => path.length >= 3));
+  assert.equal(round.totalPoints, 3);
 });
 
 test("parses Q as a Qu tile and accepts explicit Qu input", () => {

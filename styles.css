@@ -730,6 +730,22 @@ a:hover {
   align-items: start;
 }
 
+.boggle-practice-layout {
+  grid-template-columns: minmax(460px, 0.9fr) minmax(480px, 1.1fr);
+}
+
+.boggle-practice-play-panel {
+  min-width: 0;
+}
+
+.practice-boggle-board {
+  width: min(100%, 460px);
+}
+
+.practice-boggle-board .tile {
+  cursor: default;
+}
+
 .anagram-play-panel,
 .anagram-progress-panel {
   padding: 14px;
@@ -1259,7 +1275,8 @@ a:hover {
     overflow: hidden;
   }
 
-  #anagram-view {
+  #anagram-view,
+  #boggle-practice-view {
     overflow-y: auto;
   }
 
@@ -1288,6 +1305,10 @@ a:hover {
     gap: 10px;
   }
 
+  .boggle-practice-layout {
+    grid-template-columns: 1fr;
+  }
+
   .anagram-play-panel,
   .anagram-progress-panel {
     padding: 8px;
@@ -1307,6 +1328,10 @@ a:hover {
     height: 47px;
     border-width: 3px;
     font-size: 28px;
+  }
+
+  .practice-boggle-board {
+    width: min(100%, 340px);
   }
 
   .guess-form {

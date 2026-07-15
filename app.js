@@ -2,6 +2,7 @@ import {
   MIN_ALLOWED_WORD_LENGTH,
   MIN_BOGGLE_WORD_LENGTH,
   SAMPLE_BOARD_5,
+  chooseRichBoggleBoard,
   compareByAlpha,
   compareByLength,
   displayTile,
@@ -39,8 +40,10 @@ const OCR_TEMPLATE_FONTS = [
 
 const elements = {
   boggleTab: document.querySelector("#boggle-tab"),
+  bogglePracticeTab: document.querySelector("#boggle-practice-tab"),
   anagramTab: document.querySelector("#anagram-tab"),
   boggleView: document.querySelector("#boggle-view"),
+  bogglePracticeView: document.querySelector("#boggle-practice-view"),
   anagramView: document.querySelector("#anagram-view"),
   sizeSelect: document.querySelector("#size-select"),
   boardInput: document.querySelector("#board-input"),
@@ -85,7 +88,20 @@ const elements = {
   anagramStatus: document.querySelector("#anagram-status"),
   anagramProgress: document.querySelector("#anagram-progress"),
   foundAnagrams: document.querySelector("#found-anagrams"),
-  anagramHeroRack: document.querySelector("#anagram-hero-rack")
+  anagramHeroRack: document.querySelector("#anagram-hero-rack"),
+  practiceBoggleSize: document.querySelector("#practice-boggle-size"),
+  practiceBoggleMinLength: document.querySelector("#practice-boggle-min-length"),
+  newBogglePracticeButton: document.querySelector("#new-boggle-practice-button"),
+  practiceBoggleBoard: document.querySelector("#practice-boggle-board"),
+  bogglePracticeGuessForm: document.querySelector("#boggle-practice-guess-form"),
+  bogglePracticeGuessInput: document.querySelector("#boggle-practice-guess-input"),
+  bogglePracticeGuessButton: document.querySelector("#boggle-practice-guess-button"),
+  bogglePracticeFeedback: document.querySelector("#boggle-practice-feedback"),
+  bogglePracticeDefinition: document.querySelector("#boggle-practice-definition"),
+  revealBogglePracticeButton: document.querySelector("#reveal-boggle-practice-button"),
+  bogglePracticeStatus: document.querySelector("#boggle-practice-status"),
+  bogglePracticeProgress: document.querySelector("#boggle-practice-progress"),
+  foundBogglePracticeWords: document.querySelector("#found-boggle-practice-words")
 };
 
 let dictionary = null;
@@ -105,6 +121,12 @@ let currentRackWords = [];
 let foundRackWords = new Set();
 let revealedRackWords = new Set();
 const usedRacks = new Set();
+let currentPracticeBoggleTiles = [];
+let currentPracticeBoggleWords = [];
+let foundPracticeBoggleWords = new Set();
+let revealedPracticeBoggleWords = new Set();
+let selectedPracticeBoggleWord = null;
+const usedPracticeBoggleBoards = new Set();
 const definitionRequests = new WeakMap();
 
 boot();
@@ -130,6 +152,7 @@ async function boot() {
     elements.loadStatus.textContent = `Indexed ${dictionary.playableEntries.toLocaleString()} NWL2023 words with definitions in ${parseMs.toLocaleString()} ms.`;
     elements.solveButton.disabled = false;
     elements.newAnagramButton.disabled = false;
+    elements.newBogglePracticeButton.disabled = false;
     solveCurrentBoard();
   } catch (error) {
     elements.loadStatus.textContent = "Could not load data/nwl2023.txt. Start the local server with npm start and open the localhost URL.";
@@ -139,7 +162,13 @@ async function boot() {
 
 function bindEvents() {
   elements.boggleTab.addEventListener("click", () => switchTab("boggle"));
+  elements.bogglePracticeTab.addEventListener("click", () => switchTab("boggle-practice"));
   elements.anagramTab.addEventListener("click", () => switchTab("anagram"));
+  elements.newBogglePracticeButton.addEventListener("click", startBogglePracticeRound);
+  elements.practiceBoggleSize.addEventListener("change", startBogglePracticeRound);
+  elements.practiceBoggleMinLength.addEventListener("change", startBogglePracticeRound);
+  elements.bogglePracticeGuessForm.addEventListener("submit", submitBogglePracticeGuess);
+  elements.revealBogglePracticeButton.addEventListener("click", revealBogglePracticeAnswers);
   elements.newAnagramButton.addEventListener("click", startAnagramRound);
   elements.anagramLetterCount.addEventListener("change", updateAnagramMinimumOptions);
   elements.guessForm.addEventListener("submit", submitAnagramGuess);
@@ -230,14 +259,194 @@ function bindEvents() {
 
 function switchTab(tab) {
   const showAnagram = tab === "anagram";
-  elements.boggleView.hidden = showAnagram;
+  const showBogglePractice = tab === "boggle-practice";
+  const showBoggle = !showAnagram && !showBogglePractice;
+  elements.boggleView.hidden = !showBoggle;
+  elements.bogglePracticeView.hidden = !showBogglePractice;
   elements.anagramView.hidden = !showAnagram;
-  elements.boggleTab.classList.toggle("is-active", !showAnagram);
+  elements.boggleTab.classList.toggle("is-active", showBoggle);
+  elements.bogglePracticeTab.classList.toggle("is-active", showBogglePractice);
   elements.anagramTab.classList.toggle("is-active", showAnagram);
-  elements.boggleTab.setAttribute("aria-selected", String(!showAnagram));
+  elements.boggleTab.setAttribute("aria-selected", String(showBoggle));
+  elements.bogglePracticeTab.setAttribute("aria-selected", String(showBogglePractice));
   elements.anagramTab.setAttribute("aria-selected", String(showAnagram));
+  if (showBogglePractice && dictionary && !currentPracticeBoggleTiles.length) startBogglePracticeRound();
+  if (showBogglePractice && currentPracticeBoggleTiles.length) elements.bogglePracticeGuessInput.focus();
   if (showAnagram && dictionary && !currentRack) startAnagramRound();
   if (showAnagram && currentRack) elements.guessInput.focus();
+}
+
+function startBogglePracticeRound() {
+  if (!dictionary) return;
+  const size = Number(elements.practiceBoggleSize.value);
+  const minLength = Number(elements.practiceBoggleMinLength.value);
+  elements.newBogglePracticeButton.disabled = true;
+  elements.bogglePracticeStatus.textContent = "Searching for a word-rich board...";
+
+  window.setTimeout(() => {
+    let round = chooseRichBoggleBoard(dictionary, {
+      size,
+      minLength,
+      sampleSize: size === 4 ? 24 : 12,
+      excludedBoards: usedPracticeBoggleBoards
+    });
+    if (!round) {
+      usedPracticeBoggleBoards.clear();
+      round = chooseRichBoggleBoard(dictionary, { size, minLength, sampleSize: 16 });
+    }
+    if (!round) {
+      elements.bogglePracticeStatus.textContent = "No suitable board was found for those settings.";
+      elements.newBogglePracticeButton.disabled = false;
+      return;
+    }
+
+    currentPracticeBoggleTiles = round.tiles;
+    currentPracticeBoggleWords = round.words;
+    foundPracticeBoggleWords = new Set();
+    revealedPracticeBoggleWords = new Set();
+    selectedPracticeBoggleWord = null;
+    usedPracticeBoggleBoards.add(round.boardKey);
+    elements.bogglePracticeGuessInput.value = "";
+    elements.bogglePracticeGuessInput.disabled = false;
+    elements.bogglePracticeGuessButton.disabled = false;
+    elements.revealBogglePracticeButton.disabled = false;
+    elements.newBogglePracticeButton.disabled = false;
+    elements.bogglePracticeFeedback.className = "guess-feedback";
+    elements.bogglePracticeFeedback.textContent = "Type a connected word from the board, then press Enter.";
+    clearRichDefinition(elements.bogglePracticeDefinition);
+    renderPracticeBoggleBoard();
+    renderBogglePracticeProgress();
+    elements.bogglePracticeGuessInput.focus();
+  }, 20);
+}
+
+function submitBogglePracticeGuess(event) {
+  event.preventDefault();
+  const guess = normalizeRack(elements.bogglePracticeGuessInput.value);
+  elements.bogglePracticeGuessInput.value = "";
+  if (!guess) return;
+
+  const answer = currentPracticeBoggleWords.find((item) => item.word === guess);
+  if (!answer) {
+    selectedPracticeBoggleWord = null;
+    elements.bogglePracticeFeedback.className = "guess-feedback is-wrong";
+    elements.bogglePracticeFeedback.textContent = `${guess} is not a connected word on this board.`;
+    clearRichDefinition(elements.bogglePracticeDefinition);
+    renderPracticeBoggleBoard();
+    return;
+  }
+
+  selectedPracticeBoggleWord = guess;
+  if (foundPracticeBoggleWords.has(guess)) {
+    elements.bogglePracticeFeedback.className = "guess-feedback is-repeat";
+    elements.bogglePracticeFeedback.textContent = `You already found ${guess}.`;
+    renderRichDefinition(elements.bogglePracticeDefinition, answer.word, answer.definition, formatBogglePoints(answer.score));
+    renderPracticeBoggleBoard();
+    return;
+  }
+
+  foundPracticeBoggleWords.add(guess);
+  elements.bogglePracticeFeedback.className = "guess-feedback is-correct";
+  elements.bogglePracticeFeedback.textContent = `Correct — ${guess} for ${formatBogglePoints(answer.score)}!`;
+  renderRichDefinition(elements.bogglePracticeDefinition, answer.word, answer.definition, formatBogglePoints(answer.score));
+  renderPracticeBoggleBoard();
+  renderBogglePracticeProgress();
+
+  if (foundPracticeBoggleWords.size === currentPracticeBoggleWords.length) {
+    elements.bogglePracticeFeedback.textContent = `Perfect! You found all ${currentPracticeBoggleWords.length} words.`;
+    elements.bogglePracticeGuessInput.disabled = true;
+    elements.bogglePracticeGuessButton.disabled = true;
+  }
+}
+
+function revealBogglePracticeAnswers() {
+  revealedPracticeBoggleWords = new Set(currentPracticeBoggleWords.map((item) => item.word));
+  elements.bogglePracticeFeedback.className = "guess-feedback is-repeat";
+  elements.bogglePracticeFeedback.textContent = "Answers revealed. Found words are green; missed words are blue.";
+  elements.revealBogglePracticeButton.disabled = true;
+  renderBogglePracticeProgress();
+}
+
+function renderPracticeBoggleBoard() {
+  const size = Number(elements.practiceBoggleSize.value);
+  const selected = currentPracticeBoggleWords.find((item) => item.word === selectedPracticeBoggleWord);
+  const pathSteps = new Map((selected?.path || []).map((index, step) => [index, step + 1]));
+  elements.practiceBoggleBoard.style.setProperty("--board-size", size);
+  elements.practiceBoggleBoard.replaceChildren();
+
+  for (let index = 0; index < size * size; index += 1) {
+    const tile = currentPracticeBoggleTiles[index] || "";
+    const cell = document.createElement("div");
+    cell.className = `tile${pathSteps.has(index) ? " is-path" : ""}`;
+    const step = document.createElement("span");
+    step.className = "tile-step";
+    step.textContent = pathSteps.get(index) || "";
+    const letter = document.createElement("span");
+    letter.className = "tile-letter";
+    letter.textContent = tile ? displayTile(tile) : "";
+    cell.append(step, letter);
+    elements.practiceBoggleBoard.append(cell);
+  }
+}
+
+function renderBogglePracticeProgress() {
+  const minLength = Number(elements.practiceBoggleMinLength.value);
+  const maxLength = Math.max(minLength, ...currentPracticeBoggleWords.map((item) => item.word.length));
+  const totalPoints = currentPracticeBoggleWords.reduce((sum, item) => sum + item.score, 0);
+  const foundPoints = currentPracticeBoggleWords
+    .filter((item) => foundPracticeBoggleWords.has(item.word))
+    .reduce((sum, item) => sum + item.score, 0);
+  elements.bogglePracticeStatus.textContent = `Found ${foundPracticeBoggleWords.size} of ${currentPracticeBoggleWords.length} words · ${foundPoints} of ${totalPoints} points.`;
+  elements.bogglePracticeProgress.replaceChildren();
+  elements.foundBogglePracticeWords.replaceChildren();
+
+  for (let length = minLength; length <= maxLength; length += 1) {
+    const words = currentPracticeBoggleWords
+      .filter((item) => item.word.length === length)
+      .sort((left, right) => left.word.localeCompare(right.word));
+    if (!words.length) continue;
+    const foundCount = words.filter((item) => foundPracticeBoggleWords.has(item.word)).length;
+    const row = document.createElement("div");
+    row.className = "progress-row";
+    row.innerHTML = `<div class="progress-label"><strong>${length} letters</strong><span>${foundCount} / ${words.length}</span></div><div class="progress-track"><span style="width: ${(foundCount / words.length) * 100}%"></span></div>`;
+    elements.bogglePracticeProgress.append(row);
+
+    const group = document.createElement("section");
+    group.className = "found-group";
+    const heading = document.createElement("h3");
+    heading.textContent = `${length}-letter words`;
+    const list = document.createElement("div");
+    list.className = "found-word-list";
+    for (const item of words) {
+      const isFound = foundPracticeBoggleWords.has(item.word);
+      const isRevealed = revealedPracticeBoggleWords.has(item.word);
+      if (!isFound && !isRevealed) continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `found-word${isFound ? " is-found" : " is-revealed"}`;
+      button.textContent = item.word;
+      button.addEventListener("click", () => {
+        selectedPracticeBoggleWord = item.word;
+        elements.bogglePracticeFeedback.className = `guess-feedback ${isFound ? "is-correct" : "is-repeat"}`;
+        elements.bogglePracticeFeedback.textContent = isFound ? `${item.word} — found by you` : `${item.word} — revealed answer`;
+        renderRichDefinition(elements.bogglePracticeDefinition, item.word, item.definition, formatBogglePoints(item.score));
+        renderPracticeBoggleBoard();
+      });
+      list.append(button);
+    }
+    if (!list.childElementCount) {
+      const empty = document.createElement("span");
+      empty.className = "no-found-words";
+      empty.textContent = "none found yet";
+      list.append(empty);
+    }
+    group.append(heading, list);
+    elements.foundBogglePracticeWords.append(group);
+  }
+}
+
+function formatBogglePoints(score) {
+  return `${score} Boggle ${score === 1 ? "point" : "points"}`;
 }
 
 function updateAnagramMinimumOptions() {
