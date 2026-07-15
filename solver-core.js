@@ -169,17 +169,22 @@ export function solveBoard(tiles, size, dictionary, options = {}) {
 
 export function resolveDefinition(word, wordDefinitions, seen = new Set()) {
   const rawDefinition = wordDefinitions.get(word) || "";
-  const baseMatch = rawDefinition.match(/^<([A-Za-z]+)=[^>]+>\s*(.*)$/);
+  const references = Array.from(rawDefinition.matchAll(/[<{]([A-Za-z]+)=[^>}]+[>}]/g));
+  if (references.length === 0) return rawDefinition;
 
-  if (!baseMatch) return rawDefinition;
-
-  const baseWord = baseMatch[1].toUpperCase();
-  if (baseWord === word || seen.has(baseWord) || !wordDefinitions.has(baseWord)) {
-    return rawDefinition;
-  }
+  const readable = rawDefinition.replace(/[<{]([A-Za-z]+)=[^>}]+[>}]/g, (_, base) => base.toUpperCase());
+  const startsWithReference = references[0].index === 0;
+  const lead = startsWithReference ? `Alternative form of ${readable}` : readable;
+  const explanations = [];
 
   seen.add(word);
-  return `${rawDefinition} - ${baseWord}: ${resolveDefinition(baseWord, wordDefinitions, seen)}`;
+  for (const reference of references) {
+    const baseWord = reference[1].toUpperCase();
+    if (baseWord === word || seen.has(baseWord) || !wordDefinitions.has(baseWord)) continue;
+    explanations.push(`${baseWord}: ${resolveDefinition(baseWord, wordDefinitions, new Set(seen))}`);
+  }
+
+  return explanations.length ? `${lead} — ${explanations.join(" / ")}` : lead;
 }
 
 export function scoreWord(word) {

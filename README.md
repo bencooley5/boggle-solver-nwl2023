@@ -2,6 +2,10 @@
 
 This is a local, static Boggle solver modeled after the dark Word Smuggler-style UI in the reference screenshot.
 
+The desktop navigation also includes an **Anagram Practice** tab. Choose a rack size and minimum word length, then the app selects a word-rich set of letters from NWL2023. Correct guesses reveal their definitions immediately, and separate progress bars track every included word length. The optional reveal button shows missed answers for review.
+
+Word panels always show a cleaned-up local NWL2023 meaning. When an internet connection is available, they also add a cached Wiktionary enrichment with broader senses, alternate spellings, pronunciation, and etymology. Cross-references such as `{cantrip=n}` are resolved locally instead of being shown as raw dictionary notation, so word validation and basic meanings still work offline.
+
 It uses `data/nwl2023.txt`, a one-entry-per-line NWL2023 word/definition file fetched from:
 
 https://raw.githubusercontent.com/scrabblewords/scrabblewords/main/words/North-American/NWL2023.txt

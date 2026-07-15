@@ -7,19 +7,20 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Boggle Solver - NWL2023</title>
-    <link rel="stylesheet" href="./styles.css?v=ocr22-board1">
+    <link rel="stylesheet" href="./styles.css?v=definitions1">
   </head>
   <body>
     <header class="topbar">
       <nav class="nav">
         <a class="nav-brand" href="./">Boggle Home</a>
-        <a class="nav-link" href="./">Boggle</a>
+        <button id="boggle-tab" class="nav-link nav-tab is-active" type="button" aria-selected="true">Boggle</button>
+        <button id="anagram-tab" class="nav-link nav-tab" type="button" aria-selected="false">Anagram Practice</button>
         <span class="nav-spacer"></span>
         <a class="nav-link return-link" href="./">» NWL2023 local solver</a>
       </nav>
     </header>
 
-    <main class="page">
+    <main id="boggle-view" class="page tab-view">
       <section class="hero">
         <div class="tile-rack" aria-hidden="true">
           <span>B</span>
@@ -77,7 +78,7 @@
         <div class="board-panel">
           <p id="solve-status" class="solve-status">Enter letters left-to-right, top-to-bottom. Q is treated as Qu.</p>
           <div id="board" class="board" aria-label="Boggle board"></div>
-          <p id="definition" class="definition"></p>
+          <div id="definition" class="definition"></div>
         </div>
 
         <div class="results-panel">
@@ -87,6 +88,70 @@
             <button id="sort-length" class="sort-link is-active" type="button">sort by length</button>
           </div>
           <div id="results" class="results" aria-live="polite"></div>
+        </div>
+      </section>
+    </main>
+
+    <main id="anagram-view" class="page tab-view" hidden>
+      <section class="hero anagram-hero">
+        <div id="anagram-hero-rack" class="tile-rack" aria-hidden="true">
+          <span>A</span><span>N</span><span>A</span><span>G</span><span>R</span><span>M</span>
+        </div>
+        <div class="hero-copy">
+          <h1>Anagram Practice</h1>
+          <p>Find every NWL2023 word hidden in the rack.</p>
+        </div>
+      </section>
+
+      <section class="anagram-controls" aria-label="Anagram practice settings">
+        <label>
+          <span>letters</span>
+          <select id="anagram-letter-count">
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6" selected>6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+          </select>
+        </label>
+        <label>
+          <span>minimum word</span>
+          <select id="anagram-min-length">
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4" selected>4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+          </select>
+        </label>
+        <button id="new-anagram-button" class="primary-button" type="button" disabled>new letters</button>
+      </section>
+
+      <p id="anagram-status" class="load-status" role="status">Loading practice dictionary...</p>
+
+      <section class="anagram-layout">
+        <div class="anagram-play-panel">
+          <div id="practice-rack" class="practice-rack" aria-label="Practice letters"></div>
+          <form id="guess-form" class="guess-form">
+            <label class="sr-only" for="guess-input">Your word</label>
+            <input id="guess-input" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="type a word" disabled>
+            <button id="guess-button" class="primary-button" type="submit" disabled>try word</button>
+          </form>
+          <p id="guess-feedback" class="guess-feedback" aria-live="polite">Choose new letters to begin.</p>
+          <div id="guess-definition" class="practice-definition" aria-live="polite"></div>
+          <button id="reveal-anagrams-button" class="secondary-button reveal-button" type="button" disabled>reveal answers</button>
+        </div>
+
+        <div class="anagram-progress-panel">
+          <h2>Your progress</h2>
+          <div id="anagram-progress" class="anagram-progress"></div>
+          <div id="found-anagrams" class="found-anagrams" aria-live="polite"></div>
         </div>
       </section>
     </main>
@@ -121,6 +186,6 @@
       </div>
     </div>
 
-    <script type="module" src="./app.js?v=ocr22-board1"></script>
+    <script type="module" src="./app.js?v=definitions1"></script>
   </body>
 </html>

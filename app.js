@@ -20,6 +20,8 @@ import {
   rotateBoardLetters
 } from "./ocr-utils.js";
 import { PHOTO_DICE_TEMPLATE_MASKS } from "./ocr-photo-templates.js?v=ocr22-board1";
+import { chooseRichRack, groupRackWordsByLength, normalizeRack } from "./anagram-core.js";
+import { fetchRichDictionaryEntry } from "./dictionary-enrichment.js";
 
 const OCR_BUILD = "2026.07.13.4 / ocr22";
 const DATA_URL = "./data/nwl2023.txt";
@@ -36,6 +38,10 @@ const OCR_TEMPLATE_FONTS = [
 ];
 
 const elements = {
+  boggleTab: document.querySelector("#boggle-tab"),
+  anagramTab: document.querySelector("#anagram-tab"),
+  boggleView: document.querySelector("#boggle-view"),
+  anagramView: document.querySelector("#anagram-view"),
   sizeSelect: document.querySelector("#size-select"),
   boardInput: document.querySelector("#board-input"),
   customMinToggle: document.querySelector("#custom-min-toggle"),
@@ -65,7 +71,21 @@ const elements = {
   applyOcrButton: document.querySelector("#apply-ocr-button"),
   rotateOcrLeftButton: document.querySelector("#rotate-ocr-left-button"),
   rotateOcrRightButton: document.querySelector("#rotate-ocr-right-button"),
-  closeOcrReviewButton: document.querySelector("#close-ocr-review-button")
+  closeOcrReviewButton: document.querySelector("#close-ocr-review-button"),
+  anagramLetterCount: document.querySelector("#anagram-letter-count"),
+  anagramMinLength: document.querySelector("#anagram-min-length"),
+  newAnagramButton: document.querySelector("#new-anagram-button"),
+  practiceRack: document.querySelector("#practice-rack"),
+  guessForm: document.querySelector("#guess-form"),
+  guessInput: document.querySelector("#guess-input"),
+  guessButton: document.querySelector("#guess-button"),
+  guessFeedback: document.querySelector("#guess-feedback"),
+  guessDefinition: document.querySelector("#guess-definition"),
+  revealAnagramsButton: document.querySelector("#reveal-anagrams-button"),
+  anagramStatus: document.querySelector("#anagram-status"),
+  anagramProgress: document.querySelector("#anagram-progress"),
+  foundAnagrams: document.querySelector("#found-anagrams"),
+  anagramHeroRack: document.querySelector("#anagram-hero-rack")
 };
 
 let dictionary = null;
@@ -80,6 +100,12 @@ let isOcrRunning = false;
 let lastOcrResults = [];
 let templateMasks = null;
 let decodedPhotoTemplateMasks = null;
+let currentRack = "";
+let currentRackWords = [];
+let foundRackWords = new Set();
+let revealedRackWords = new Set();
+const usedRacks = new Set();
+const definitionRequests = new WeakMap();
 
 boot();
 
@@ -103,6 +129,7 @@ async function boot() {
 
     elements.loadStatus.textContent = `Indexed ${dictionary.playableEntries.toLocaleString()} NWL2023 words with definitions in ${parseMs.toLocaleString()} ms.`;
     elements.solveButton.disabled = false;
+    elements.newAnagramButton.disabled = false;
     solveCurrentBoard();
   } catch (error) {
     elements.loadStatus.textContent = "Could not load data/nwl2023.txt. Start the local server with npm start and open the localhost URL.";
@@ -111,6 +138,12 @@ async function boot() {
 }
 
 function bindEvents() {
+  elements.boggleTab.addEventListener("click", () => switchTab("boggle"));
+  elements.anagramTab.addEventListener("click", () => switchTab("anagram"));
+  elements.newAnagramButton.addEventListener("click", startAnagramRound);
+  elements.anagramLetterCount.addEventListener("change", updateAnagramMinimumOptions);
+  elements.guessForm.addEventListener("submit", submitAnagramGuess);
+  elements.revealAnagramsButton.addEventListener("click", revealAnagramAnswers);
   elements.sizeSelect.addEventListener("change", () => {
     const size = getSize();
     if (size === 5) {
@@ -193,6 +226,170 @@ function bindEvents() {
     updateSortButtons();
     renderResults();
   });
+}
+
+function switchTab(tab) {
+  const showAnagram = tab === "anagram";
+  elements.boggleView.hidden = showAnagram;
+  elements.anagramView.hidden = !showAnagram;
+  elements.boggleTab.classList.toggle("is-active", !showAnagram);
+  elements.anagramTab.classList.toggle("is-active", showAnagram);
+  elements.boggleTab.setAttribute("aria-selected", String(!showAnagram));
+  elements.anagramTab.setAttribute("aria-selected", String(showAnagram));
+  if (showAnagram && dictionary && !currentRack) startAnagramRound();
+  if (showAnagram && currentRack) elements.guessInput.focus();
+}
+
+function updateAnagramMinimumOptions() {
+  const letterCount = Number(elements.anagramLetterCount.value);
+  for (const option of elements.anagramMinLength.options) {
+    option.disabled = Number(option.value) > letterCount;
+  }
+  if (Number(elements.anagramMinLength.value) > letterCount) {
+    elements.anagramMinLength.value = String(letterCount);
+  }
+}
+
+function startAnagramRound() {
+  if (!dictionary) return;
+  updateAnagramMinimumOptions();
+  const letterCount = Number(elements.anagramLetterCount.value);
+  const minLength = Number(elements.anagramMinLength.value);
+  elements.newAnagramButton.disabled = true;
+  elements.anagramStatus.textContent = "Searching the dictionary for a word-rich rack...";
+
+  window.setTimeout(() => {
+    let round = chooseRichRack(dictionary, { letterCount, minLength, excludedRacks: usedRacks });
+    if (!round) {
+      usedRacks.clear();
+      round = chooseRichRack(dictionary, { letterCount, minLength });
+    }
+    if (!round) {
+      elements.anagramStatus.textContent = "No suitable rack was found for those settings.";
+      elements.newAnagramButton.disabled = false;
+      return;
+    }
+
+    currentRack = round.rack;
+    currentRackWords = round.words;
+    foundRackWords = new Set();
+    revealedRackWords = new Set();
+    usedRacks.add(round.sortedRack);
+    renderPracticeRack();
+    renderAnagramProgress();
+    elements.guessInput.value = "";
+    elements.guessInput.disabled = false;
+    elements.guessButton.disabled = false;
+    elements.revealAnagramsButton.disabled = false;
+    elements.newAnagramButton.disabled = false;
+    elements.guessFeedback.className = "guess-feedback";
+    elements.guessFeedback.textContent = "Type a word using these letters, then press Enter.";
+    clearRichDefinition(elements.guessDefinition);
+    elements.anagramStatus.textContent = `${currentRackWords.length.toLocaleString()} words to find from ${minLength} to ${letterCount} letters.`;
+    elements.guessInput.focus();
+  }, 20);
+}
+
+function submitAnagramGuess(event) {
+  event.preventDefault();
+  const guess = normalizeRack(elements.guessInput.value);
+  elements.guessInput.value = "";
+  if (!guess) return;
+
+  const answer = currentRackWords.find((item) => item.word === guess);
+  if (!answer) {
+    elements.guessFeedback.className = "guess-feedback is-wrong";
+    elements.guessFeedback.textContent = `${guess} is not one of the answers.`;
+    clearRichDefinition(elements.guessDefinition);
+    return;
+  }
+  if (foundRackWords.has(guess)) {
+    elements.guessFeedback.className = "guess-feedback is-repeat";
+    elements.guessFeedback.textContent = `You already found ${guess}.`;
+    renderRichDefinition(elements.guessDefinition, answer.word, answer.definition);
+    return;
+  }
+
+  foundRackWords.add(guess);
+  elements.guessFeedback.className = "guess-feedback is-correct";
+  elements.guessFeedback.textContent = `Correct — ${guess}!`;
+  renderRichDefinition(elements.guessDefinition, answer.word, answer.definition);
+  renderAnagramProgress();
+
+  if (foundRackWords.size === currentRackWords.length) {
+    elements.guessFeedback.textContent = `Perfect! You found all ${currentRackWords.length} words.`;
+    elements.guessInput.disabled = true;
+    elements.guessButton.disabled = true;
+  }
+}
+
+function revealAnagramAnswers() {
+  revealedRackWords = new Set(currentRackWords.map((item) => item.word));
+  elements.guessFeedback.className = "guess-feedback is-repeat";
+  elements.guessFeedback.textContent = "Answers revealed. Found words are green; missed words are blue.";
+  elements.revealAnagramsButton.disabled = true;
+  renderAnagramProgress();
+}
+
+function renderPracticeRack() {
+  elements.practiceRack.replaceChildren();
+  for (const letter of currentRack) {
+    const tile = document.createElement("span");
+    tile.textContent = letter;
+    elements.practiceRack.append(tile);
+  }
+  elements.anagramHeroRack.replaceChildren(...Array.from(currentRack, (letter) => {
+    const tile = document.createElement("span");
+    tile.textContent = letter;
+    return tile;
+  }));
+}
+
+function renderAnagramProgress() {
+  const minLength = Number(elements.anagramMinLength.value);
+  const maxLength = Number(elements.anagramLetterCount.value);
+  const groups = groupRackWordsByLength(currentRackWords, minLength, maxLength);
+  elements.anagramProgress.replaceChildren();
+  elements.foundAnagrams.replaceChildren();
+
+  for (const [length, words] of groups) {
+    const foundCount = words.filter((item) => foundRackWords.has(item.word)).length;
+    const row = document.createElement("div");
+    row.className = "progress-row";
+    row.innerHTML = `<div class="progress-label"><strong>${length} letters</strong><span>${foundCount} / ${words.length}</span></div><div class="progress-track"><span style="width: ${words.length ? (foundCount / words.length) * 100 : 0}%"></span></div>`;
+    elements.anagramProgress.append(row);
+
+    const group = document.createElement("section");
+    group.className = "found-group";
+    const heading = document.createElement("h3");
+    heading.textContent = `${length}-letter words`;
+    group.append(heading);
+    const list = document.createElement("div");
+    list.className = "found-word-list";
+    for (const item of words) {
+      const isFound = foundRackWords.has(item.word);
+      const isRevealed = revealedRackWords.has(item.word);
+      if (!isFound && !isRevealed) continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `found-word${isFound ? " is-found" : " is-revealed"}`;
+      button.textContent = item.word;
+      button.addEventListener("click", () => {
+        elements.guessFeedback.className = `guess-feedback ${isFound ? "is-correct" : "is-repeat"}`;
+        elements.guessFeedback.textContent = isFound ? `${item.word} — found by you` : `${item.word} — revealed answer`;
+        renderRichDefinition(elements.guessDefinition, item.word, item.definition);
+      });
+      list.append(button);
+    }
+    if (!list.childElementCount) {
+      const empty = document.createElement("span");
+      empty.className = "no-found-words";
+      empty.textContent = "none found yet";
+      list.append(empty);
+    }
+    group.append(list);
+    elements.foundAnagrams.append(group);
+  }
 }
 
 async function forceAppUpdate() {
@@ -394,12 +591,118 @@ function renderSolveStatus(visibleResults = getFilteredResults()) {
 function renderDefinition() {
   const result = currentResults.find((item) => item.word === selectedWord);
   if (!result) {
-    elements.definition.textContent = "";
+    clearRichDefinition(elements.definition);
     return;
   }
 
   const pointsLabel = result.score === 1 ? "point" : "points";
-  elements.definition.textContent = `${result.word} (${result.score} Boggle ${pointsLabel}): ${result.definition}`;
+  renderRichDefinition(elements.definition, result.word, result.definition, `${result.score} Boggle ${pointsLabel}`);
+}
+
+function clearRichDefinition(container) {
+  definitionRequests.set(container, null);
+  container.replaceChildren();
+}
+
+function renderRichDefinition(container, word, localDefinition, scoreLabel = "") {
+  const requestId = Symbol(word);
+  definitionRequests.set(container, requestId);
+  container.replaceChildren();
+
+  const local = document.createElement("section");
+  local.className = "dictionary-section local-dictionary-section";
+  const localHeading = document.createElement("h3");
+  localHeading.textContent = scoreLabel ? `${word} · ${scoreLabel}` : word;
+  const localSource = document.createElement("span");
+  localSource.className = "dictionary-source-label";
+  localSource.textContent = "NWL2023 word-list meaning";
+  const localText = document.createElement("p");
+  localText.textContent = localDefinition || "No local definition available.";
+  local.append(localHeading, localSource, localText);
+
+  const loading = document.createElement("p");
+  loading.className = "rich-dictionary-status";
+  loading.textContent = "Looking up richer definition, alternate forms, and word origin...";
+  container.append(local, loading);
+
+  fetchRichDictionaryEntry(word)
+    .then((entry) => {
+      if (definitionRequests.get(container) !== requestId) return;
+      loading.remove();
+      if (!entry) {
+        const missing = document.createElement("p");
+        missing.className = "rich-dictionary-status";
+        missing.textContent = "No expanded English entry was found for this word.";
+        container.append(missing);
+        return;
+      }
+      container.append(buildRichDictionarySection(entry));
+    })
+    .catch(() => {
+      if (definitionRequests.get(container) !== requestId) return;
+      loading.textContent = "Richer details are unavailable right now; the NWL2023 meaning above still works offline.";
+    });
+}
+
+function buildRichDictionarySection(entry) {
+  const section = document.createElement("section");
+  section.className = "dictionary-section rich-dictionary-section";
+  const heading = document.createElement("h3");
+  heading.textContent = entry.baseWord ? `Expanded entry via ${entry.baseWord.toUpperCase()}` : "Expanded dictionary entry";
+  const sourceLabel = document.createElement("span");
+  sourceLabel.className = "dictionary-source-label";
+  sourceLabel.textContent = "Wiktionary enrichment";
+  section.append(heading, sourceLabel);
+
+  if (entry.senses.length) {
+    const list = document.createElement("ol");
+    list.className = "dictionary-senses";
+    for (const sense of entry.senses) {
+      const item = document.createElement("li");
+      const part = document.createElement("span");
+      part.className = "part-of-speech";
+      part.textContent = sense.partOfSpeech;
+      item.append(part, document.createTextNode(sense.definition));
+      list.append(item);
+    }
+    section.append(list);
+  }
+
+  if (entry.alternativeForms.length) {
+    const forms = document.createElement("p");
+    forms.className = "dictionary-detail-line";
+    const label = document.createElement("strong");
+    label.textContent = "Alternate forms: ";
+    forms.append(label, document.createTextNode(entry.alternativeForms.join(", ")));
+    section.append(forms);
+  }
+
+  if (entry.pronunciation) {
+    const pronunciation = document.createElement("p");
+    pronunciation.className = "dictionary-detail-line";
+    const label = document.createElement("strong");
+    label.textContent = "Pronunciation: ";
+    pronunciation.append(label, document.createTextNode(entry.pronunciation));
+    section.append(pronunciation);
+  }
+
+  if (entry.etymology) {
+    const origin = document.createElement("p");
+    origin.className = "dictionary-origin";
+    const label = document.createElement("strong");
+    label.textContent = "Origin: ";
+    origin.append(label, document.createTextNode(entry.etymology));
+    section.append(origin);
+  }
+
+  const source = document.createElement("a");
+  source.className = "dictionary-source-link";
+  source.href = entry.sourceUrl;
+  source.target = "_blank";
+  source.rel = "noreferrer";
+  source.textContent = "View the full Wiktionary entry";
+  section.append(source);
+  return section;
 }
 
 function clearResults(clearStatus = true) {
@@ -407,7 +710,7 @@ function clearResults(clearStatus = true) {
   selectedWord = null;
   selectedStartIndex = null;
   elements.results.replaceChildren();
-  elements.definition.textContent = "";
+  clearRichDefinition(elements.definition);
   if (clearStatus) {
     elements.solveStatus.textContent = "Ready.";
     elements.solveStatus.dataset.baseText = "Ready.";

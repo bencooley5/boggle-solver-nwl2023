@@ -87,6 +87,24 @@ a:hover {
   text-shadow: 1px 1px 0 #000;
 }
 
+.nav-tab {
+  padding: 7px 10px;
+  border: 2px outset #758ac9;
+  background: #171788;
+  cursor: pointer;
+}
+
+.nav-tab.is-active {
+  border-style: inset;
+  background: #fff1a8;
+  color: #5c0010;
+  text-shadow: none;
+}
+
+.tab-view[hidden] {
+  display: none;
+}
+
 .nav-brand {
   color: var(--yellow);
 }
@@ -585,9 +603,11 @@ a:hover {
 
 .definition {
   min-height: 76px;
+  max-height: 390px;
   margin: 12px auto 0;
   width: min(100%, 430px);
   padding: 8px;
+  overflow-y: auto;
   border: 3px inset #003e34;
   background: #001c17;
   color: #ffcc33;
@@ -668,6 +688,319 @@ a:hover {
   font-family: "Courier New", Courier, monospace;
   font-size: 15px;
   font-weight: 700;
+}
+
+.anagram-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) minmax(170px, 240px) minmax(160px, 210px);
+  gap: 14px;
+  align-items: end;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 3px inset #d6bf77;
+  background: #f8e8a8;
+}
+
+.anagram-controls label {
+  display: grid;
+  gap: 5px;
+  color: #351f0d;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.anagram-controls select {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 12px;
+  border: 3px inset #d0d0d0;
+  border-radius: 0;
+  background: #fffdf1;
+  color: #111;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.anagram-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 0.85fr) minmax(480px, 1.15fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.anagram-play-panel,
+.anagram-progress-panel {
+  padding: 14px;
+  border: 4px ridge #5d3219;
+  box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.28);
+}
+
+.anagram-play-panel {
+  position: sticky;
+  top: 18px;
+  background:
+    linear-gradient(rgba(0, 107, 87, 0.92), rgba(0, 72, 60, 0.92)),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.1) 0 3px, transparent 3px 9px);
+}
+
+.anagram-progress-panel {
+  min-width: 0;
+  border-color: #c7b06a;
+  background:
+    linear-gradient(rgba(255, 244, 199, 0.96), rgba(255, 244, 199, 0.96)),
+    repeating-linear-gradient(0deg, transparent 0 10px, rgba(76, 42, 22, 0.08) 10px 11px);
+}
+
+.anagram-progress-panel h2 {
+  margin: 0 0 12px;
+  color: #7b0016;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 28px;
+}
+
+.practice-rack {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 9px;
+  min-height: 103px;
+  padding: 14px;
+  border: 5px inset #003c32;
+  background: var(--felt-dark);
+}
+
+.practice-rack span {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 72px;
+  border: 4px outset #f2d287;
+  background: linear-gradient(135deg, #fff4bd, #d7aa5f);
+  color: #241406;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 43px;
+  font-weight: 700;
+  text-shadow: 1px 1px 0 #fff5c0;
+}
+
+.guess-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 145px;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.guess-form input {
+  min-width: 0;
+  min-height: 50px;
+  padding: 0 14px;
+  border: 3px inset #d0d0d0;
+  border-radius: 0;
+  background: #fffdf1;
+  color: #111;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.guess-feedback,
+.practice-definition {
+  margin: 12px 0 0;
+  padding: 8px;
+  border: 2px inset #003e34;
+  background: #001c17;
+  color: #f5f5f5;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.guess-feedback.is-correct { color: #6dff66; }
+.guess-feedback.is-wrong { color: #ff8080; }
+.guess-feedback.is-repeat { color: #67dcff; }
+
+.practice-definition {
+  min-height: 76px;
+  max-height: 430px;
+  overflow-y: auto;
+  color: #ffcc33;
+}
+
+.dictionary-section + .dictionary-section {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 2px dashed #477d72;
+}
+
+.dictionary-section h3 {
+  margin: 0;
+  color: #ffda59;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.dictionary-section p {
+  margin: 6px 0 0;
+}
+
+.dictionary-source-label {
+  display: block;
+  margin-top: 2px;
+  color: #88bbb0;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.local-dictionary-section p {
+  color: #ffcc33;
+}
+
+.rich-dictionary-section {
+  color: #eafff8;
+}
+
+.dictionary-senses {
+  display: grid;
+  gap: 7px;
+  margin: 9px 0 0;
+  padding-left: 22px;
+}
+
+.dictionary-senses li {
+  padding-left: 2px;
+}
+
+.part-of-speech {
+  display: inline-block;
+  margin-right: 7px;
+  padding: 1px 4px;
+  border: 1px solid #62aa9b;
+  background: #0a4c40;
+  color: #9ff5df;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.dictionary-detail-line,
+.dictionary-origin {
+  color: #d6f7ef;
+}
+
+.dictionary-origin {
+  padding: 7px;
+  border-left: 4px solid #d4a72c;
+  background: #102d28;
+}
+
+.dictionary-source-link {
+  display: inline-block;
+  margin-top: 9px;
+  color: #78dfff;
+  font-size: 12px;
+}
+
+.dictionary-source-link:visited {
+  color: #d3a7ff;
+}
+
+.rich-dictionary-status {
+  margin: 9px 0 0;
+  color: #9fc7be;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.reveal-button {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.anagram-progress {
+  display: grid;
+  gap: 11px;
+  padding: 10px;
+  border: 3px inset #d6bf77;
+  background: #f8e8a8;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 4px;
+  color: #351f0d;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 14px;
+}
+
+.progress-track {
+  height: 20px;
+  padding: 2px;
+  border: 3px inset #a28c55;
+  background: #d2c48d;
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #1d801b, #65da2a);
+  transition: width 0.18s ease-out;
+}
+
+.found-anagrams {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.found-group {
+  padding: 9px;
+  border: 2px groove #b2964c;
+  background: #fff0b8;
+}
+
+.found-group h3 {
+  margin: 0 0 7px;
+  color: #5c0010;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 15px;
+}
+
+.found-word-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.found-word {
+  min-height: 34px;
+  padding: 3px 9px;
+  border: 3px outset #93c8e8;
+  background: linear-gradient(#aeeaff, #4695ce);
+  color: #001f45;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.found-word.is-found {
+  border-color: #a7e676;
+  background: linear-gradient(#caff99, #49a52d);
+  color: #092600;
+}
+
+.no-found-words {
+  color: #725c31;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 13px;
+  font-style: italic;
 }
 
 .sr-only {
@@ -861,6 +1194,14 @@ a:hover {
     grid-template-columns: 1fr;
   }
 
+  .anagram-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .anagram-play-panel {
+    position: static;
+  }
+
   .board-panel {
     position: static;
   }
@@ -878,35 +1219,104 @@ a:hover {
   }
 
   .topbar {
-    display: none;
+    display: block;
   }
 
   .nav {
-    gap: 10px;
-    min-height: 34px;
-    padding: 0 10px;
+    gap: 6px;
+    min-height: 44px;
+    padding: 4px 6px;
   }
 
-  .nav-brand {
-    font-size: 13px;
+  .nav-brand,
+  .nav-spacer,
+  .return-link {
+    display: none;
   }
 
   .nav-link {
-    display: none;
+    display: block;
   }
 
   .return-link {
     display: none;
   }
 
+  .nav-tab {
+    flex: 1;
+    min-height: 34px;
+    padding: 4px 7px;
+    font-size: 12px;
+  }
+
   .page {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    height: 100dvh;
+    height: calc(100dvh - 44px);
     min-height: 0;
     padding: 6px;
     overflow: hidden;
+  }
+
+  #anagram-view {
+    overflow-y: auto;
+  }
+
+  .anagram-controls {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin: 0;
+    padding: 6px;
+    border-width: 2px;
+  }
+
+  .anagram-controls select {
+    min-height: 38px;
+    padding: 0 8px;
+    border-width: 2px;
+    font-size: 15px;
+  }
+
+  .anagram-controls .primary-button {
+    grid-column: 1 / -1;
+  }
+
+  .anagram-layout {
+    display: grid;
+    flex: none;
+    gap: 10px;
+  }
+
+  .anagram-play-panel,
+  .anagram-progress-panel {
+    padding: 8px;
+    border-width: 3px;
+    box-shadow: none;
+  }
+
+  .practice-rack {
+    min-height: 0;
+    gap: 5px;
+    padding: 8px;
+    border-width: 3px;
+  }
+
+  .practice-rack span {
+    width: 43px;
+    height: 47px;
+    border-width: 3px;
+    font-size: 28px;
+  }
+
+  .guess-form {
+    grid-template-columns: minmax(0, 1fr) 92px;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .guess-form .primary-button {
+    grid-column: auto;
   }
 
   .hero {

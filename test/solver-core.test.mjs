@@ -18,6 +18,78 @@ import {
   rotateBoardLetters
 } from "../ocr-utils.js";
 import { PHOTO_DICE_TEMPLATE_MASKS } from "../ocr-photo-templates.js";
+import { canBuildWord, chooseRichRack, findRackWords, groupRackWordsByLength } from "../anagram-core.js";
+import { parseWiktionaryExtract } from "../dictionary-enrichment.js";
+
+test("turns dictionary cross-references into readable definitions", () => {
+  const dictionary = parseDictionaryText([
+    "CANTRIP a magic spell [n CANTRIPS]",
+    "CANTRAIP {cantrip=n} [n CANTRAIPS]"
+  ].join("\n"), { minLength: 2 });
+
+  const definition = resolveDefinition("CANTRAIP", dictionary.wordDefinitions);
+  assert.match(definition, /Alternative form of CANTRIP/);
+  assert.match(definition, /a magic spell/);
+  assert.doesNotMatch(definition, /\{cantrip=n\}/);
+});
+
+test("extracts richer senses, alternate spellings, and origin information", () => {
+  const extract = `== English ==
+
+=== Alternative forms ===
+cantrap, cantrup, cantraip
+
+=== Etymology ===
+From Middle Scots cantrip, cantrap (“a magic charm; a trick”). Further origin obscure.
+
+=== Pronunciation ===
+IPA(key): /ˈkæntrɪp/
+
+=== Noun ===
+cantrip (plural cantrips)
+
+A spell or incantation; a trifling magic trick.
+
+A wilful piece of trickery or mischief.
+
+(roleplaying games) A minor spell.`;
+  const entry = parseWiktionaryExtract("cantrip", extract);
+
+  assert.deepEqual(entry.alternativeForms, ["cantrap", "cantrup", "cantraip"]);
+  assert.match(entry.etymology, /Middle Scots/);
+  assert.equal(entry.pronunciation, "/ˈkæntrɪp/");
+  assert.equal(entry.senses.length, 3);
+});
+
+test("finds rack words while respecting duplicate letters and length limits", () => {
+  const dictionary = parseDictionaryText([
+    "ACRE a unit of land [n ACRES]",
+    "ACRES <acre=n> [n]",
+    "CAN an airtight container [n CANS]",
+    "CANE a walking stick [n CANES]",
+    "CRANE a bird [n CRANES]",
+    "CRANES <crane=n> [n]",
+    "RACER one that races [n RACERS]"
+  ].join("\n"), { minLength: 2 });
+
+  assert.equal(canBuildWord("ACRE", "CRANES"), true);
+  assert.equal(canBuildWord("RACER", "CRANES"), false);
+  assert.deepEqual(findRackWords("CRANES", dictionary, { minLength: 4 }).map(({ word }) => word), ["ACRE", "CANE", "ACRES", "CRANE", "CRANES"]);
+  assert.equal(groupRackWordsByLength(findRackWords("CRANES", dictionary, { minLength: 4 }), 4, 6).get(5).length, 2);
+});
+
+test("chooses a full-length rack with playable sub-anagrams", () => {
+  const dictionary = parseDictionaryText([
+    "ACRE a unit of land [n ACRES]",
+    "ACRES <acre=n> [n]",
+    "CRANE a bird [n CRANES]",
+    "CRANES <crane=n> [n]"
+  ].join("\n"), { minLength: 2 });
+  const round = chooseRichRack(dictionary, { letterCount: 6, minLength: 4, sampleSize: 20, rng: () => 0 });
+
+  assert.equal(round.sortedRack, "ACENRS");
+  assert.ok(round.words.some(({ word }) => word === "CRANES"));
+});
 
 test("parses Q as a Qu tile and accepts explicit Qu input", () => {
   assert.deepEqual(parseBoardInput("QABCDEFGHIJKLMNO", 4).tiles[0], "QU");
