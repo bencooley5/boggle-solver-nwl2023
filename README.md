@@ -6,7 +6,7 @@ The desktop navigation also includes an **Anagram Practice** tab. Choose a rack 
 
 The **Boggle Practice** tab generates a word-rich 4×4, 5×5, or 6×6 board. Type connected board words to score them, see their paths and definitions, track progress by word length, or reveal missed answers for review.
 
-Word panels always show a cleaned-up local NWL2023 meaning. When an internet connection is available, they also add a cached Wiktionary enrichment with broader senses, alternate spellings, pronunciation, and etymology. Cross-references such as `{cantrip=n}` are resolved locally instead of being shown as raw dictionary notation, so word validation and basic meanings still work offline.
+Word panels show a concise local definition. Inflected forms and cross-references such as `{toll=v}` resolve directly to the base word's definition, so the basic meaning works offline without extra dictionary labels or grammar metadata.
 
 It uses `data/nwl2023.txt`, a one-entry-per-line NWL2023 word/definition file fetched from:
 

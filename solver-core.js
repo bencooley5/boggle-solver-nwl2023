@@ -199,6 +199,14 @@ export function resolveDefinition(word, wordDefinitions, seen = new Set()) {
 
   const readable = rawDefinition.replace(/[<{]([A-Za-z]+)=[^>}]+[>}]/g, (_, base) => base.toUpperCase());
   const startsWithReference = references[0].index === 0;
+  if (startsWithReference) {
+    const baseWord = references[0][1].toUpperCase();
+    if (baseWord !== word && !seen.has(baseWord) && wordDefinitions.has(baseWord)) {
+      return resolveDefinition(baseWord, wordDefinitions, new Set([...seen, word]));
+    }
+    return readable;
+  }
+
   const lead = startsWithReference ? `Alternative form of ${readable}` : readable;
   const explanations = [];
 

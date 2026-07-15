@@ -22,16 +22,14 @@ import { PHOTO_DICE_TEMPLATE_MASKS } from "../ocr-photo-templates.js";
 import { canBuildWord, chooseRichRack, findRackWords, groupRackWordsByLength } from "../anagram-core.js";
 import { parseWiktionaryExtract } from "../dictionary-enrichment.js";
 
-test("turns dictionary cross-references into readable definitions", () => {
+test("resolves dictionary cross-references to their base definitions", () => {
   const dictionary = parseDictionaryText([
     "CANTRIP a magic spell [n CANTRIPS]",
     "CANTRAIP {cantrip=n} [n CANTRAIPS]"
   ].join("\n"), { minLength: 2 });
 
   const definition = resolveDefinition("CANTRAIP", dictionary.wordDefinitions);
-  assert.match(definition, /Alternative form of CANTRIP/);
-  assert.match(definition, /a magic spell/);
-  assert.doesNotMatch(definition, /\{cantrip=n\}/);
+  assert.equal(definition, "a magic spell [n CANTRIPS]");
 });
 
 test("extracts richer senses, alternate spellings, and origin information", () => {
@@ -130,12 +128,15 @@ test("resolves inflection references to base definitions", () => {
     "AA rough, cindery lava [n AAS]",
     "AAS <aa=n> [n]",
     "GESTATE to carry in the uterus during pregnancy [v GESTATED, GESTATES, GESTATING]",
-    "GESTATES <gestate=v> [v]"
+    "GESTATES <gestate=v> [v]",
+    "TOLL to collect or impose a fixed charge for a service or privilege [v TOLLED, TOLLING, TOLLS]",
+    "TOLLS <toll=v> [v]"
   ].join("\n"));
 
-  assert.equal(dictionary.playableEntries, 3);
+  assert.equal(dictionary.playableEntries, 5);
   assert.match(resolveDefinition("AAS", dictionary.wordDefinitions), /rough, cindery lava/);
-  assert.match(resolveDefinition("GESTATES", dictionary.wordDefinitions), /GESTATE: to carry/);
+  assert.equal(resolveDefinition("GESTATES", dictionary.wordDefinitions), "to carry in the uterus during pregnancy [v GESTATED, GESTATES, GESTATING]");
+  assert.equal(resolveDefinition("TOLLS", dictionary.wordDefinitions), "to collect or impose a fixed charge for a service or privilege [v TOLLED, TOLLING, TOLLS]");
 });
 
 test("solves a small board through the trie", () => {

@@ -11,7 +11,7 @@ import {
   randomBoard,
   solveBoard,
   tilesToInput
-} from "./solver-core.js?v=boggle-practice2";
+} from "./solver-core.js?v=boggle-practice3";
 import {
   OCR_ROTATIONS,
   chooseBestOcrCandidate,
@@ -22,7 +22,6 @@ import {
 } from "./ocr-utils.js";
 import { PHOTO_DICE_TEMPLATE_MASKS } from "./ocr-photo-templates.js?v=ocr22-board1";
 import { chooseRichRack, groupRackWordsByLength, normalizeRack } from "./anagram-core.js";
-import { fetchRichDictionaryEntry } from "./dictionary-enrichment.js";
 
 const OCR_BUILD = "2026.07.13.4 / ocr22";
 const DATA_URL = "./data/nwl2023.txt";
@@ -814,104 +813,16 @@ function clearRichDefinition(container) {
 }
 
 function renderRichDefinition(container, word, localDefinition, scoreLabel = "") {
-  const requestId = Symbol(word);
-  definitionRequests.set(container, requestId);
   container.replaceChildren();
 
   const local = document.createElement("section");
   local.className = "dictionary-section local-dictionary-section";
   const localHeading = document.createElement("h3");
   localHeading.textContent = scoreLabel ? `${word} · ${scoreLabel}` : word;
-  const localSource = document.createElement("span");
-  localSource.className = "dictionary-source-label";
-  localSource.textContent = "NWL2023 word-list meaning";
   const localText = document.createElement("p");
   localText.textContent = localDefinition || "No local definition available.";
-  local.append(localHeading, localSource, localText);
-
-  const loading = document.createElement("p");
-  loading.className = "rich-dictionary-status";
-  loading.textContent = "Looking up richer definition, alternate forms, and word origin...";
-  container.append(local, loading);
-
-  fetchRichDictionaryEntry(word)
-    .then((entry) => {
-      if (definitionRequests.get(container) !== requestId) return;
-      loading.remove();
-      if (!entry) {
-        const missing = document.createElement("p");
-        missing.className = "rich-dictionary-status";
-        missing.textContent = "No expanded English entry was found for this word.";
-        container.append(missing);
-        return;
-      }
-      container.append(buildRichDictionarySection(entry));
-    })
-    .catch(() => {
-      if (definitionRequests.get(container) !== requestId) return;
-      loading.textContent = "Richer details are unavailable right now; the NWL2023 meaning above still works offline.";
-    });
-}
-
-function buildRichDictionarySection(entry) {
-  const section = document.createElement("section");
-  section.className = "dictionary-section rich-dictionary-section";
-  const heading = document.createElement("h3");
-  heading.textContent = entry.baseWord ? `Expanded entry via ${entry.baseWord.toUpperCase()}` : "Expanded dictionary entry";
-  const sourceLabel = document.createElement("span");
-  sourceLabel.className = "dictionary-source-label";
-  sourceLabel.textContent = "Wiktionary enrichment";
-  section.append(heading, sourceLabel);
-
-  if (entry.senses.length) {
-    const list = document.createElement("ol");
-    list.className = "dictionary-senses";
-    for (const sense of entry.senses) {
-      const item = document.createElement("li");
-      const part = document.createElement("span");
-      part.className = "part-of-speech";
-      part.textContent = sense.partOfSpeech;
-      item.append(part, document.createTextNode(sense.definition));
-      list.append(item);
-    }
-    section.append(list);
-  }
-
-  if (entry.alternativeForms.length) {
-    const forms = document.createElement("p");
-    forms.className = "dictionary-detail-line";
-    const label = document.createElement("strong");
-    label.textContent = "Alternate forms: ";
-    forms.append(label, document.createTextNode(entry.alternativeForms.join(", ")));
-    section.append(forms);
-  }
-
-  if (entry.pronunciation) {
-    const pronunciation = document.createElement("p");
-    pronunciation.className = "dictionary-detail-line";
-    const label = document.createElement("strong");
-    label.textContent = "Pronunciation: ";
-    pronunciation.append(label, document.createTextNode(entry.pronunciation));
-    section.append(pronunciation);
-  }
-
-  if (entry.etymology) {
-    const origin = document.createElement("p");
-    origin.className = "dictionary-origin";
-    const label = document.createElement("strong");
-    label.textContent = "Origin: ";
-    origin.append(label, document.createTextNode(entry.etymology));
-    section.append(origin);
-  }
-
-  const source = document.createElement("a");
-  source.className = "dictionary-source-link";
-  source.href = entry.sourceUrl;
-  source.target = "_blank";
-  source.rel = "noreferrer";
-  source.textContent = "View the full Wiktionary entry";
-  section.append(source);
-  return section;
+  local.append(localHeading, localText);
+  container.append(local);
 }
 
 function clearResults(clearStatus = true) {
