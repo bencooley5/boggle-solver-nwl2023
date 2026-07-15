@@ -11,7 +11,7 @@ import {
   randomBoard,
   solveBoard,
   tilesToInput
-} from "./solver-core.js?v=boggle-practice1";
+} from "./solver-core.js?v=boggle-practice2";
 import {
   OCR_ROTATIONS,
   chooseBestOcrCandidate,
