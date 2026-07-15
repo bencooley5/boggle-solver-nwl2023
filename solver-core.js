@@ -123,6 +123,10 @@ export function randomBoard(size, rng = Math.random) {
   });
 }
 
+export function shuffleBoardTiles(tiles, rng = Math.random) {
+  return shuffle(tiles, rng);
+}
+
 export function chooseRichBoggleBoard(dictionary, options = {}) {
   const size = Number(options.size) || 4;
   const minLength = Number(options.minLength) || MIN_BOGGLE_WORD_LENGTH;

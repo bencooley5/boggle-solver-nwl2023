@@ -723,6 +723,39 @@ a:hover {
   font-weight: 700;
 }
 
+.saved-board-controls {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) repeat(3, minmax(135px, max-content));
+  gap: 10px;
+  align-items: end;
+  margin: -2px 0 12px;
+  padding: 10px;
+  border: 3px inset #d6bf77;
+  background: #f8e8a8;
+}
+
+.saved-board-controls label {
+  display: grid;
+  gap: 5px;
+  color: #351f0d;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.saved-board-controls select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 3px inset #d0d0d0;
+  border-radius: 0;
+  background: #fffdf1;
+  color: #111;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .anagram-layout {
   display: grid;
   grid-template-columns: minmax(420px, 0.85fr) minmax(480px, 1.15fr);
@@ -1286,6 +1319,33 @@ a:hover {
     margin: 0;
     padding: 6px;
     border-width: 2px;
+  }
+
+  .saved-board-controls {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin: 0;
+    padding: 6px;
+    border-width: 2px;
+  }
+
+  .saved-board-controls label {
+    grid-column: 1 / -1;
+  }
+
+  .saved-board-controls select {
+    min-height: 38px;
+    padding: 0 8px;
+    border-width: 2px;
+    font-size: 12px;
+  }
+
+  .saved-board-controls .secondary-button {
+    grid-column: auto;
+  }
+
+  .saved-board-controls #shuffle-boggle-board-button {
+    grid-column: 1 / -1;
   }
 
   .anagram-controls select {

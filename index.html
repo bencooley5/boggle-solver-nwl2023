@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Boggle Solver - NWL2023</title>
-    <link rel="stylesheet" href="./styles.css?v=boggle-practice4">
+    <link rel="stylesheet" href="./styles.css?v=boggle-practice5">
   </head>
   <body>
     <header class="topbar">
@@ -129,6 +129,18 @@
         <button id="new-boggle-practice-button" class="primary-button" type="button" disabled>new board</button>
       </section>
 
+      <section class="saved-board-controls" aria-label="Saved Boggle boards">
+        <label>
+          <span>saved boards</span>
+          <select id="saved-boggle-board-select">
+            <option value="">No saved boards yet</option>
+          </select>
+        </label>
+        <button id="save-boggle-board-button" class="secondary-button" type="button" disabled>save board</button>
+        <button id="replay-boggle-board-button" class="secondary-button" type="button" disabled>replay saved</button>
+        <button id="shuffle-boggle-board-button" class="secondary-button" type="button" disabled>shuffle saved</button>
+      </section>
+
       <p id="boggle-practice-status" class="load-status" role="status">Loading practice dictionary...</p>
 
       <section class="anagram-layout boggle-practice-layout">
@@ -246,6 +258,6 @@
       </div>
     </div>
 
-    <script type="module" src="./app.js?v=boggle-practice4"></script>
+    <script type="module" src="./app.js?v=boggle-practice5"></script>
   </body>
 </html>

@@ -9,9 +9,10 @@ import {
   parseBoardInput,
   parseDictionaryText,
   randomBoard,
+  shuffleBoardTiles,
   solveBoard,
   tilesToInput
-} from "./solver-core.js?v=boggle-practice4";
+} from "./solver-core.js?v=boggle-practice5";
 import {
   OCR_ROTATIONS,
   chooseBestOcrCandidate,
@@ -36,6 +37,8 @@ const OCR_TEMPLATE_FONTS = [
   "Georgia",
   "Impact"
 ];
+const SAVED_BOGGLE_BOARDS_KEY = "boggle-saved-practice-boards-v1";
+const MAX_SAVED_BOGGLE_BOARDS = 24;
 
 const elements = {
   boggleTab: document.querySelector("#boggle-tab"),
@@ -100,7 +103,11 @@ const elements = {
   revealBogglePracticeButton: document.querySelector("#reveal-boggle-practice-button"),
   bogglePracticeStatus: document.querySelector("#boggle-practice-status"),
   bogglePracticeProgress: document.querySelector("#boggle-practice-progress"),
-  foundBogglePracticeWords: document.querySelector("#found-boggle-practice-words")
+  foundBogglePracticeWords: document.querySelector("#found-boggle-practice-words"),
+  savedBoggleBoardSelect: document.querySelector("#saved-boggle-board-select"),
+  saveBoggleBoardButton: document.querySelector("#save-boggle-board-button"),
+  replayBoggleBoardButton: document.querySelector("#replay-boggle-board-button"),
+  shuffleBoggleBoardButton: document.querySelector("#shuffle-boggle-board-button")
 };
 
 let dictionary = null;
@@ -126,6 +133,7 @@ let foundPracticeBoggleWords = new Set();
 let revealedPracticeBoggleWords = new Set();
 let selectedPracticeBoggleWord = null;
 const usedPracticeBoggleBoards = new Set();
+let savedPracticeBoggleBoards = loadSavedPracticeBoggleBoards();
 const definitionRequests = new WeakMap();
 
 boot();
@@ -136,6 +144,7 @@ async function boot() {
   elements.boardInput.value = SAMPLE_BOARD_5;
   renderBoard();
   bindEvents();
+  renderSavedPracticeBoggleBoards();
 
   try {
     const response = await fetch(DATA_URL);
@@ -168,6 +177,10 @@ function bindEvents() {
   elements.practiceBoggleMinLength.addEventListener("change", startBogglePracticeRound);
   elements.bogglePracticeGuessForm.addEventListener("submit", submitBogglePracticeGuess);
   elements.revealBogglePracticeButton.addEventListener("click", revealBogglePracticeAnswers);
+  elements.saveBoggleBoardButton.addEventListener("click", saveCurrentPracticeBoggleBoard);
+  elements.savedBoggleBoardSelect.addEventListener("change", updateSavedPracticeBoggleControls);
+  elements.replayBoggleBoardButton.addEventListener("click", () => replaySavedPracticeBoggleBoard(false));
+  elements.shuffleBoggleBoardButton.addEventListener("click", () => replaySavedPracticeBoggleBoard(true));
   elements.newAnagramButton.addEventListener("click", startAnagramRound);
   elements.anagramLetterCount.addEventListener("change", updateAnagramMinimumOptions);
   elements.guessForm.addEventListener("submit", submitAnagramGuess);
@@ -299,24 +312,120 @@ function startBogglePracticeRound() {
       return;
     }
 
-    currentPracticeBoggleTiles = round.tiles;
-    currentPracticeBoggleWords = round.words;
-    foundPracticeBoggleWords = new Set();
-    revealedPracticeBoggleWords = new Set();
-    selectedPracticeBoggleWord = null;
     usedPracticeBoggleBoards.add(round.boardKey);
-    elements.bogglePracticeGuessInput.value = "";
-    elements.bogglePracticeGuessInput.disabled = false;
-    elements.bogglePracticeGuessButton.disabled = false;
-    elements.revealBogglePracticeButton.disabled = false;
-    elements.newBogglePracticeButton.disabled = false;
-    elements.bogglePracticeFeedback.className = "guess-feedback";
-    elements.bogglePracticeFeedback.textContent = "Type a connected word from the board, then press Enter.";
-    clearRichDefinition(elements.bogglePracticeDefinition);
-    renderPracticeBoggleBoard();
-    renderBogglePracticeProgress();
-    elements.bogglePracticeGuessInput.focus();
+    loadPracticeBoggleBoard(round.tiles, size, minLength, round.words);
   }, 20);
+}
+
+function loadPracticeBoggleBoard(tiles, size, minLength, words = null) {
+  if (!dictionary) return;
+  elements.practiceBoggleSize.value = String(size);
+  elements.practiceBoggleMinLength.value = String(minLength);
+  currentPracticeBoggleTiles = tiles.slice();
+  currentPracticeBoggleWords = words || solveBoard(currentPracticeBoggleTiles, size, dictionary, { minLength });
+  foundPracticeBoggleWords = new Set();
+  revealedPracticeBoggleWords = new Set();
+  selectedPracticeBoggleWord = null;
+  elements.bogglePracticeGuessInput.value = "";
+  elements.bogglePracticeGuessInput.disabled = false;
+  elements.bogglePracticeGuessButton.disabled = false;
+  elements.revealBogglePracticeButton.disabled = false;
+  elements.newBogglePracticeButton.disabled = false;
+  elements.saveBoggleBoardButton.disabled = false;
+  elements.bogglePracticeFeedback.className = "guess-feedback";
+  elements.bogglePracticeFeedback.textContent = "Type a connected word from the board, then press Enter.";
+  clearRichDefinition(elements.bogglePracticeDefinition);
+  renderPracticeBoggleBoard();
+  renderBogglePracticeProgress();
+  updateSavedPracticeBoggleControls();
+  elements.bogglePracticeGuessInput.focus();
+}
+
+function saveCurrentPracticeBoggleBoard() {
+  if (!currentPracticeBoggleTiles.length) return;
+  const size = Number(elements.practiceBoggleSize.value);
+  const minLength = Number(elements.practiceBoggleMinLength.value);
+  const tiles = currentPracticeBoggleTiles.slice();
+  const id = savedPracticeBoggleBoardId(tiles, size, minLength);
+  const board = { id, size, minLength, tiles, savedAt: Date.now() };
+  savedPracticeBoggleBoards = [board, ...savedPracticeBoggleBoards.filter((item) => item.id !== id)]
+    .slice(0, MAX_SAVED_BOGGLE_BOARDS);
+  writeSavedPracticeBoggleBoards();
+  renderSavedPracticeBoggleBoards(id);
+  elements.bogglePracticeFeedback.className = "guess-feedback is-correct";
+  elements.bogglePracticeFeedback.textContent = "Board saved. Replay it exactly or shuffle the same tiles whenever you like.";
+}
+
+function replaySavedPracticeBoggleBoard(shuffle) {
+  const saved = getSelectedSavedPracticeBoggleBoard();
+  if (!saved || !dictionary) return;
+  let tiles = saved.tiles.slice();
+  if (shuffle) {
+    for (let attempt = 0; attempt < 4 && tiles.every((tile, index) => tile === saved.tiles[index]); attempt += 1) {
+      tiles = shuffleBoardTiles(saved.tiles);
+    }
+  }
+  loadPracticeBoggleBoard(tiles, saved.size, saved.minLength);
+  elements.bogglePracticeFeedback.className = "guess-feedback is-repeat";
+  elements.bogglePracticeFeedback.textContent = shuffle
+    ? "Same saved tiles, shuffled into a fresh board layout."
+    : "Replaying your saved board.";
+}
+
+function renderSavedPracticeBoggleBoards(selectedId = elements.savedBoggleBoardSelect.value) {
+  elements.savedBoggleBoardSelect.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = savedPracticeBoggleBoards.length ? "Choose a saved board" : "No saved boards yet";
+  elements.savedBoggleBoardSelect.append(placeholder);
+  for (const board of savedPracticeBoggleBoards) {
+    const option = document.createElement("option");
+    option.value = board.id;
+    option.textContent = `${board.size}×${board.size} · ${board.tiles.map(displayTile).join(" ")} · ${board.minLength}+`;
+    elements.savedBoggleBoardSelect.append(option);
+  }
+  elements.savedBoggleBoardSelect.value = savedPracticeBoggleBoards.some((board) => board.id === selectedId) ? selectedId : "";
+  updateSavedPracticeBoggleControls();
+}
+
+function updateSavedPracticeBoggleControls() {
+  const hasSavedBoard = Boolean(getSelectedSavedPracticeBoggleBoard());
+  elements.replayBoggleBoardButton.disabled = !hasSavedBoard;
+  elements.shuffleBoggleBoardButton.disabled = !hasSavedBoard;
+  elements.saveBoggleBoardButton.disabled = !currentPracticeBoggleTiles.length;
+}
+
+function getSelectedSavedPracticeBoggleBoard() {
+  return savedPracticeBoggleBoards.find((board) => board.id === elements.savedBoggleBoardSelect.value) || null;
+}
+
+function loadSavedPracticeBoggleBoards() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAVED_BOGGLE_BOARDS_KEY));
+    if (!Array.isArray(saved)) return [];
+    return saved
+      .filter((board) => Number.isInteger(board?.size) && Array.isArray(board?.tiles) && board.tiles.length === board.size * board.size)
+      .map((board) => ({
+        id: String(board.id || savedPracticeBoggleBoardId(board.tiles, board.size, board.minLength)),
+        size: board.size,
+        minLength: Number(board.minLength) || MIN_BOGGLE_WORD_LENGTH,
+        tiles: board.tiles.map((tile) => String(tile)),
+        savedAt: Number(board.savedAt) || 0
+      }))
+      .slice(0, MAX_SAVED_BOGGLE_BOARDS);
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedPracticeBoggleBoards() {
+  try {
+    localStorage.setItem(SAVED_BOGGLE_BOARDS_KEY, JSON.stringify(savedPracticeBoggleBoards));
+  } catch {}
+}
+
+function savedPracticeBoggleBoardId(tiles, size, minLength) {
+  return `${size}:${minLength}:${tiles.join(",")}`;
 }
 
 function submitBogglePracticeGuess(event) {

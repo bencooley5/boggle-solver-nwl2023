@@ -10,6 +10,7 @@ import {
   randomBoard,
   resolveDefinition,
   scoreWord,
+  shuffleBoardTiles,
   solveBoard
 } from "../solver-core.js";
 import {
@@ -114,6 +115,13 @@ test("chooses a playable Boggle practice board and keeps word paths", () => {
 test("creates compact 2x2 and 3x3 Boggle boards", () => {
   assert.equal(randomBoard(2, () => 0).length, 4);
   assert.equal(randomBoard(3, () => 0).length, 9);
+});
+
+test("shuffles a board without changing its tiles", () => {
+  const tiles = ["A", "B", "QU", "D"];
+  const shuffled = shuffleBoardTiles(tiles, () => 0);
+  assert.notDeepEqual(shuffled, tiles);
+  assert.deepEqual(shuffled.slice().sort(), tiles.slice().sort());
 });
 
 test("parses Q as a Qu tile and accepts explicit Qu input", () => {
