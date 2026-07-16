@@ -2,7 +2,6 @@ import {
   MIN_ALLOWED_WORD_LENGTH,
   MIN_BOGGLE_WORD_LENGTH,
   SAMPLE_BOARD_5,
-  chooseRichBoggleBoard,
   compareByAlpha,
   compareByLength,
   displayTile,
@@ -12,7 +11,7 @@ import {
   shuffleBoardTiles,
   solveBoard,
   tilesToInput
-} from "./solver-core.js?v=boggle-practice5";
+} from "./solver-core.js?v=boggle-dice1";
 import {
   OCR_ROTATIONS,
   chooseBestOcrCandidate,
@@ -132,7 +131,6 @@ let currentPracticeBoggleWords = [];
 let foundPracticeBoggleWords = new Set();
 let revealedPracticeBoggleWords = new Set();
 let selectedPracticeBoggleWord = null;
-const usedPracticeBoggleBoards = new Set();
 let savedPracticeBoggleBoards = loadSavedPracticeBoggleBoards();
 const definitionRequests = new WeakMap();
 
@@ -293,27 +291,13 @@ function startBogglePracticeRound() {
   const size = Number(elements.practiceBoggleSize.value);
   const minLength = Number(elements.practiceBoggleMinLength.value);
   elements.newBogglePracticeButton.disabled = true;
-  elements.bogglePracticeStatus.textContent = "Searching for a word-rich board...";
+  elements.bogglePracticeStatus.textContent = "Rolling Boggle dice...";
 
   window.setTimeout(() => {
-    let round = chooseRichBoggleBoard(dictionary, {
-      size,
-      minLength,
-      sampleSize: ({ 2: 80, 3: 48, 4: 24, 5: 12, 6: 12 }[size] ?? 16),
-      excludedBoards: usedPracticeBoggleBoards
-    });
-    if (!round) {
-      usedPracticeBoggleBoards.clear();
-      round = chooseRichBoggleBoard(dictionary, { size, minLength, sampleSize: 16 });
-    }
-    if (!round) {
-      elements.bogglePracticeStatus.textContent = "No suitable board was found for those settings.";
-      elements.newBogglePracticeButton.disabled = false;
-      return;
-    }
-
-    usedPracticeBoggleBoards.add(round.boardKey);
-    loadPracticeBoggleBoard(round.tiles, size, minLength, round.words);
+    // A practice board is one genuine roll: shuffle the dice and take one face
+    // from each. Do not sample several rolls or optimize for word count.
+    const tiles = randomBoard(size);
+    loadPracticeBoggleBoard(tiles, size, minLength);
   }, 20);
 }
 
